@@ -36,27 +36,28 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         heading.font = .systemFont(ofSize: 13, weight: .semibold)
         heading.alignment = .center
 
-        let scrollView = NSScrollView()
+        let scrollView = ReleaseNotesScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        // A width-tracking text container wraps long sentences while the document grows vertically.
-        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: Self.contentSize.width - 60, height: 220))
+        // The scroll view sizes the document from its actual viewport after Auto Layout.
+        let textView = NSTextView(frame: .zero)
         textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.font = .systemFont(ofSize: 12)
         textView.textColor = .labelColor
         textView.textContainerInset = NSSize(width: 4, height: 8)
-        textView.isVerticallyResizable = true
+        textView.isVerticallyResizable = false
         textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
+        textView.autoresizingMask = []
+        textView.minSize = .zero
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: Self.contentSize.width - 68, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.heightTracksTextView = false
         textView.string = entries.map { entry in
             "Version \(entry.version)\n\n" + entry.notes.map { "• \($0)" }.joined(separator: "\n\n")
         }.joined(separator: "\n\n")
@@ -82,5 +83,33 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         onClose()
+    }
+}
+
+/// Keeps the text document as wide as the viewport and as tall as all its wrapped lines.
+/// The header and Continue button stay outside this scrolling document.
+@MainActor
+private final class ReleaseNotesScrollView: NSScrollView {
+    override func layout() {
+        super.layout()
+        guard let textView = documentView as? NSTextView,
+              let textContainer = textView.textContainer,
+              let layoutManager = textView.layoutManager else { return }
+
+        let viewportSize = contentView.bounds.size
+        guard viewportSize.width > 0 else { return }
+        let inset = textView.textContainerInset
+        textContainer.containerSize = NSSize(
+            width: max(1, viewportSize.width - 2 * inset.width),
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        layoutManager.ensureLayout(for: textContainer)
+        let documentSize = NSSize(
+            width: viewportSize.width,
+            height: max(viewportSize.height, ceil(layoutManager.usedRect(for: textContainer).maxY) + 2 * inset.height)
+        )
+        if textView.frame.size != documentSize {
+            textView.setFrameSize(documentSize)
+        }
     }
 }
