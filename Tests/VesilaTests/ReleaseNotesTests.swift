@@ -50,9 +50,18 @@ struct ReleaseNotesTests {
 
     @Test func bundledNotesDecodeSuccessfully() {
         let bundled = ReleaseNotes.loadBundled()
-        #expect(bundled.map(\.version) == ["1.0.3"])
-        #expect(bundled.first?.notes.count == 3)
-        #expect(bundled.first?.notes.allSatisfy { !$0.isEmpty } == true)
+        #expect(!bundled.isEmpty, "ReleaseNotes.json should decode successfully")
+        for entry in bundled {
+            #expect(entry.version.split(separator: ".").allSatisfy { Int($0) != nil },
+                "Bundled entry version \(entry.version) is not valid")
+            #expect(!entry.notes.isEmpty, "Bundled entry \(entry.version) should contain at least one note")
+            #expect(entry.notes.allSatisfy { !$0.isEmpty })
+        }
+        if VesilaConfig.version != "dev" {
+            let latest = bundled.max { $0.version.compare($1.version, options: .numeric) == .orderedAscending }
+            #expect(latest?.version == VesilaConfig.version,
+                "Latest bundled release note should match the current app version")
+        }
     }
 
     @Test func recordedVersionRoundTripsAcrossStoreInstances() {
