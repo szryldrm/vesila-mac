@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: VesilaController?
     private var statusBarController: StatusBarController?
     private var onboardingWindowController: OnboardingWindowController?
+    private var releaseNotesWindowController: ReleaseNotesWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // LSUIElement already hides the Dock icon in the packaged app; this also covers `swift run`.
@@ -16,8 +17,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.controller = controller
         statusBarController = StatusBarController(controller: controller, updaterController: updaterController)
 
+        let currentVersion = VesilaConfig.version
+        let notes = ReleaseNotes.entriesToShow(
+            previousVersion: preferencesStore.lastLaunchedVersion,
+            currentVersion: currentVersion,
+            isOnboardingCompleted: preferencesStore.isOnboardingCompleted,
+            entries: ReleaseNotes.loadBundled()
+        )
+        // Evaluate first, then record even when notes are absent or onboarding takes priority.
+        if currentVersion != "dev" {
+            preferencesStore.lastLaunchedVersion = currentVersion
+        }
+
         if !preferencesStore.isOnboardingCompleted {
             showOnboarding()
+        } else if !notes.isEmpty {
+            let releaseNotes = ReleaseNotesWindowController(version: currentVersion, entries: notes) { [weak self] in
+                self?.releaseNotesWindowController = nil
+            }
+            releaseNotesWindowController = releaseNotes
+            releaseNotes.show()
         }
 
         // Yield until launch and onboarding setup have finished. Sparkle schedules its own checks.
