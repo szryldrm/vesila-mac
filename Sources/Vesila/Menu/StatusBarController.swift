@@ -76,6 +76,8 @@ final class StatusBarController: NSObject {
 
     private func handle(_ action: VesilaMenuView.Action) {
         switch action {
+        case .setVesilaActive(let isOn):
+            controller.setVesilaActive(isOn)
         case .setPresence(let isOn):
             controller.setPresenceActive(isOn)
         case .setSystemAwake(let isOn):

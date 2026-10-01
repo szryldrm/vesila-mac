@@ -215,12 +215,13 @@ Presence and System Awake share a single session with one timer.
 - Picking a duration while Vesila is off just sets it for next time. Your choice is remembered
   across launches.
 
-### Right-click quick toggle
+### Header switch and right-click quick toggle
 
 > [!TIP]
-> Right-click the menu bar icon to switch Vesila on or off without opening the menu.
+> Use the switch next to the Vesila header to turn Vesila on or off, or right-click the menu bar
+> icon without opening the menu. Both controls use the same rules.
 
-- **While active**, right-click remembers the current Presence / System Awake combination and turns
+- **While active**, either control remembers the current Presence / System Awake combination and turns
   both off.
 - **While inactive**, it restores the last combination that was on. Until you've used another one,
   that's **Presence + System Awake**.
@@ -240,7 +241,7 @@ Vesila ends the session, switching off both Presence and System Awake, when:
 - the Active for timer runs out
 
 When you come back (wake, lid open), **Vesila stays off**. It never silently switches itself back
-on; a right-click brings back your last combination.
+on; the header switch or a right-click brings back your last combination.
 
 Display sleep on its own doesn't end the session. If display sleep locks your screen, that lock ends
 the session unless Stay Active When Locked is on. Unlocking changes nothing: a running session
