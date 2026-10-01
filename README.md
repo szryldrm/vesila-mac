@@ -277,8 +277,8 @@ later revoked, Presence switches itself off and System Awake keeps running.
 ## Installation
 
 > [!NOTE]
-> Prebuilt, signed, and notarized releases will be available from GitHub Releases. Until the first
-> release is published, [build Vesila from source](#building-from-source).
+> Signed and notarized releases are published on [GitHub Releases](https://github.com/szryldrm/vesila-mac/releases).
+> The current release is **Vesila 1.0.2**.
 
 Once it's installed:
 
@@ -342,28 +342,22 @@ Extra arguments are passed through to `swift test`:
 The wrapper exists for machines with only the Command Line Tools, where plain `swift test` can't
 find the Swift Testing macro plugin. Everywhere else it's harmless.
 
-The suite has 62 tests in 9 suites, written with Swift Testing. It covers the state rules
+The suite has 63 tests in 9 suites, written with Swift Testing. It covers the state rules
 (sessions, durations, right-click memory, Stay Active When Locked), Presence pulse timing, preference
 persistence, and system integration: System Awake's power-assertion handling and the controller
 wiring, using real IOKit assertions that the test process holds briefly.
 
 ## Releasing
 
-*For maintainers.* `Scripts/release.sh` is the single release pipeline:
+Maintainer release tooling is intentionally kept outside the repository so signing identities,
+notarization credentials, local Keychain profiles, and deployment configuration stay local.
 
-```sh
-./Scripts/release.sh --dry-run patch   # validate the environment and preview; changes nothing
-./Scripts/release.sh patch             # or: minor, major, or an explicit X.Y.Z
-```
+The release process runs the full test suite, updates `VERSION` and `BUILD_NUMBER`, builds the app,
+Developer ID signs it with Hardened Runtime, notarizes, staples, and verifies the app and DMG, and
+produces a SHA-256 checksum. Published artifacts are uploaded to GitHub Releases.
 
-It runs the tests, bumps `VERSION` and `BUILD_NUMBER`, and builds the app. It then signs the app
-with a Developer ID certificate (Hardened Runtime, secure timestamp), notarizes and staples it, and
-verifies it with Gatekeeper. The DMG goes through the same steps: create, sign, notarize, staple,
-verify. The result is `Releases/Vesila-<version>.dmg` with a SHA-256 checksum next to it.
-
-The working tree must be clean (or pass `--allow-dirty`). A test failure aborts before anything
-changes. Any later failure restores `VERSION` and `BUILD_NUMBER`, so a retry reuses the same
-version. [DISTRIBUTION.md](DISTRIBUTION.md) covers the one-time signing and notarization setup.
+Tracked source code must never contain signing certificates, private keys, passwords, tokens, or
+notarization credentials.
 
 ## Architecture
 
@@ -434,9 +428,11 @@ Sources/Vesila/
 ├── Windows/      Welcome and About windows
 └── Resources/    The four status bar icons (SVG)
 Tests/VesilaTests/  State, Presence timing, preferences, system integration
-Scripts/            build_app.sh, test.sh, release.sh
+Scripts/            build_app.sh, test.sh
 Packaging/          Info.plist, entitlements
 ```
+
+Maintainer signing, notarization, and deployment tooling is local-only and intentionally untracked.
 
 </details>
 
@@ -538,9 +534,8 @@ log stream --level info --predicate 'subsystem == "com.sezeryildirim.vesila"'
 The features described above are implemented and covered by the test suite.
 
 - **Version:** tracked in [`VERSION`](VERSION)
-- **Releases:** no public binary release yet. Signed and notarized DMGs will be published on GitHub
-  Releases.
-- **License:** not yet specified
+- **Latest release:** [Vesila 1.0.2](https://github.com/szryldrm/vesila-mac/releases/tag/v1.0.2), signed and notarized
+- **License:** All rights reserved. See [LICENSE](LICENSE).
 
 ## Disclaimer
 
