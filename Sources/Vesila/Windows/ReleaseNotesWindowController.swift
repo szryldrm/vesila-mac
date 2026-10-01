@@ -54,9 +54,9 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
-        textView.maxSize = NSSize(width: .greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: Self.contentSize.width - 68, height: .greatestFiniteMagnitude)
+        textView.textContainer?.containerSize = NSSize(width: Self.contentSize.width - 68, height: CGFloat.greatestFiniteMagnitude)
         textView.string = entries.map { entry in
             "Version \(entry.version)\n\n" + entry.notes.map { "• \($0)" }.joined(separator: "\n\n")
         }.joined(separator: "\n\n")
