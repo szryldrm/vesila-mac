@@ -1,0 +1,11 @@
+.build/
+.swiftpm/
+*.xcodeproj
+DerivedData/
+.DS_Store
+*.p12
+*.key
+*.certSigningRequest
+
+# Local agent planning files
+/docs/superpowers/
