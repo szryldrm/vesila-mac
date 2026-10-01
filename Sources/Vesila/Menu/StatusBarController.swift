@@ -10,14 +10,16 @@ import AppKit
 final class StatusBarController: NSObject {
     private let controller: VesilaController
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private lazy var aboutWindowController = AboutWindowController()
+    private let updaterController: UpdaterController
+    private lazy var aboutWindowController = AboutWindowController(updaterController: updaterController)
 
     // Set only while the menu is open. The menu and its view are rebuilt on every open.
     private weak var openMenu: NSMenu?
     private weak var openMenuView: VesilaMenuView?
     private var countdownTimer: Timer?
 
-    init(controller: VesilaController) {
+    init(controller: VesilaController, updaterController: UpdaterController) {
+        self.updaterController = updaterController
         self.controller = controller
         super.init()
 

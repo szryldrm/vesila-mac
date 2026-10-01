@@ -1,9 +1,14 @@
 import AppKit
 
+@MainActor
 final class AboutWindowController: NSWindowController {
     private static let contentSize = NSSize(width: 320, height: 270)
 
-    init() {
+    private let updaterController: UpdaterController
+    private var updateObservation: NSKeyValueObservation?
+
+    init(updaterController: UpdaterController) {
+        self.updaterController = updaterController
         let window = WindowChrome.makeWindow(size: Self.contentSize, title: "About \(VesilaConfig.appName)")
         super.init(window: window)
         window.contentView = makeContentView()
@@ -34,7 +39,12 @@ final class AboutWindowController: NSWindowController {
         tagline.alignment = .center
 
         let updateButton = VesilaActionButton(title: "Check for Updates", symbolName: "arrow.clockwise", style: .primary)
-        updateButton.onAction = { [weak self] in self?.checkForUpdates() }
+        updateButton.onAction = { [weak self] in self?.updaterController.checkForUpdates() }
+        updateObservation = updaterController.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak updateButton] _, change in
+            MainActor.assumeIsolated {
+                updateButton?.isEnabled = change.newValue ?? false
+            }
+        }
         let githubButton = VesilaActionButton(title: "GitHub", symbolName: "arrow.up.right", style: .secondary)
         githubButton.onAction = { if let url = VesilaConfig.githubURL { NSWorkspace.shared.open(url) } }
         githubButton.isEnabled = VesilaConfig.githubURL != nil
@@ -58,12 +68,4 @@ final class AboutWindowController: NSWindowController {
         }
     }
 
-    /// Vesila has no update source yet; this explains that rather than silently doing nothing.
-    private func checkForUpdates() {
-        let alert = NSAlert()
-        alert.messageText = "No Updates Available"
-        alert.informativeText = "Update source is not configured yet."
-        alert.alertStyle = .informational
-        alert.runModal()
-    }
 }
