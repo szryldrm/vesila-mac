@@ -97,6 +97,47 @@ struct ReleaseNotesWindowTests {
         }
     }
 
+    @Test(arguments: [false, true])
+    func titleStaysCenteredThroughFocusAndSizeChanges(darkAppearance: Bool) throws {
+        _ = NSApplication.shared
+        let controller = ReleaseNotesWindowController(version: "1.0.3", entries: [
+            ReleaseNotes(version: "1.0.3", notes: ["Automatic update checks."])
+        ], onClose: {})
+        let window = try #require(controller.window)
+        let root = try #require(window.contentView)
+        window.appearance = try #require(NSAppearance(named: darkAppearance ? .darkAqua : .aqua))
+        let heading = try #require(descendants(of: root).compactMap { $0 as? NSTextField }
+            .first { $0.stringValue == "What's New in Vesila 1.0.3" })
+        let icon = try #require(descendants(of: root).compactMap { $0 as? NSImageView }.first)
+        #expect(!heading.isEditable)
+        #expect(!heading.isSelectable)
+        #expect(!heading.allowsEditingTextAttributes)
+        #expect(!heading.acceptsFirstResponder)
+        #expect(heading.alignment == .center)
+        let title = heading.attributedStringValue
+        // Both the normal prefix and accent version must inherit the same paragraph.
+        for index in 0..<title.length {
+            let paragraph = try #require(title.attribute(.paragraphStyle, at: index, effectiveRange: nil)
+                as? NSParagraphStyle)
+            #expect(paragraph.alignment == .center)
+        }
+        for width in [CGFloat(640), 720, 640] {
+            window.setContentSize(NSSize(width: width, height: 520))
+            root.layoutSubtreeIfNeeded()
+            let headingFrame = heading.convert(heading.bounds, to: root)
+            let iconFrame = icon.convert(icon.bounds, to: root)
+            #expect(abs(headingFrame.midX - root.bounds.midX) < 1)
+            #expect(abs(iconFrame.midX - root.bounds.midX) < 1)
+            // A title focus attempt must not introduce a field editor or move the label.
+            window.makeFirstResponder(heading)
+            root.layoutSubtreeIfNeeded()
+            #expect(window.firstResponder !== heading)
+            #expect(heading.currentEditor() == nil)
+            #expect(heading.convert(heading.bounds, to: root) == headingFrame)
+            #expect(heading.attributedStringValue.isEqual(to: title))
+        }
+    }
+
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
     }

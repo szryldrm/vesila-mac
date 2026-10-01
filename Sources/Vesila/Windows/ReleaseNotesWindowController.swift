@@ -40,8 +40,16 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
             .font: NSFont.systemFont(ofSize: 17, weight: .bold),
             .foregroundColor: NSColor.controlAccentColor
         ]))
+        // Attributed text supplies its own paragraph alignment. Apply it to every run,
+        // including the highlighted version, so the label always draws as one title.
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        title.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: title.length))
         heading.attributedStringValue = title
         heading.alignment = .center
+        heading.isEditable = false
+        heading.isSelectable = false
+        heading.allowsEditingTextAttributes = false
 
         // Measure at the full card width first: short notes need no scroll view.
         let textView = NSTextView(frame: .zero)
