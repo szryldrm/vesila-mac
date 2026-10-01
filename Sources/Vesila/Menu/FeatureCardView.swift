@@ -41,13 +41,13 @@ final class FeatureCardView: MenuSurfaceView {
     }
 }
 
-/// Full-width row for Keep Display Awake. Dimmed and disabled while System Awake is off; its
-/// value is a remembered preference either way.
-final class DisplayAwakeRowView: MenuSurfaceView {
-    private static let title = "Keep Display Awake"
+/// Full-width row for Stay Active When Locked. Always enabled: it's a remembered preference, not
+/// part of the session, so it doesn't depend on System Awake or the Active for timer.
+final class StayActiveWhenLockedRowView: MenuSurfaceView {
+    private static let title = "Stay Active When Locked"
 
     private let toggle = VesilaToggleControl()
-    private let label = NSTextField(labelWithString: DisplayAwakeRowView.title)
+    private let label = NSTextField(labelWithString: StayActiveWhenLockedRowView.title)
     private let icon = NSImageView()
     private let onToggle: (Bool) -> Void
 
@@ -55,7 +55,9 @@ final class DisplayAwakeRowView: MenuSurfaceView {
         self.onToggle = onToggle
         super.init(cornerRadius: MenuStyle.controlRadius)
         label.font = .systemFont(ofSize: 11.5)
-        icon.image = NSImage(systemSymbolName: "display", accessibilityDescription: nil)
+        label.textColor = .labelColor
+        icon.image = NSImage(systemSymbolName: "lock", accessibilityDescription: nil)
+        icon.contentTintColor = .secondaryLabelColor
         icon.setAccessibilityElement(false)
         toggle.target = self
         toggle.action = #selector(toggled)
@@ -78,12 +80,8 @@ final class DisplayAwakeRowView: MenuSurfaceView {
 
     @objc private func toggled() { onToggle(toggle.isOn) }
 
-    func update(isOn: Bool, isEnabled: Bool) {
+    func update(isOn: Bool) {
         toggle.isOn = isOn
-        toggle.isEnabled = isEnabled
-        label.isEnabled = isEnabled
-        label.textColor = isEnabled ? .labelColor : .disabledControlTextColor
-        icon.contentTintColor = isEnabled ? .secondaryLabelColor : .disabledControlTextColor
-        fillColor = (isEnabled && isOn) ? CardColor.accentFillSubtle : CardColor.surface
+        fillColor = isOn ? CardColor.accentFillSubtle : CardColor.surface
     }
 }

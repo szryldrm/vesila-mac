@@ -1,26 +1,23 @@
 import AppKit
 
-/// Reports the events after which Vesila turns itself off: system sleep, screen lock, switching to
-/// another user, and closing the laptop lid. Nothing is reported on wake or unlock; Vesila stays off.
+/// Reports system sleep, screen lock, switching to another user, and closing the laptop lid as a
+/// `VesilaInterruption`. It reports every one of them and makes no decisions: `VesilaState` decides
+/// whether each one ends the session. Sleep, user switch, and lid close always turn Vesila off; a
+/// screen lock does too, unless Stay Active When Locked is on. Every interruption, an ignored lock
+/// included, abandons a pending Presence activation. Nothing is reported on wake or unlock, so
+/// nothing is ever restored.
 ///
-/// Display sleep on its own is deliberately not an interruption. System Awake without Keep
-/// Display Awake exists precisely to let the display sleep while the Mac stays awake. When display
-/// sleep does lock the screen, the lock notification covers it.
+/// Display sleep on its own is deliberately not an interruption. System Awake exists precisely to
+/// let the display sleep while the Mac stays awake. When display sleep does lock the screen, the
+/// lock notification covers it.
 @MainActor
 final class InterruptionMonitor: NSObject {
-    enum Interruption: String {
-        case systemSleep
-        case screenLocked
-        case sessionResigned
-        case lidClosed
-    }
-
     private static let screenLockedNotification = Notification.Name("com.apple.screenIsLocked")
 
     private let lidMonitor = LidMonitor()
-    private var onInterruption: ((Interruption) -> Void)?
+    private var onInterruption: ((VesilaInterruption) -> Void)?
 
-    func start(onInterruption: @escaping (Interruption) -> Void) {
+    func start(onInterruption: @escaping (VesilaInterruption) -> Void) {
         guard self.onInterruption == nil else { return }
         self.onInterruption = onInterruption
 

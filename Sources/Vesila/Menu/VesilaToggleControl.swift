@@ -1,7 +1,7 @@
 import AppKit
 
 /// A lightweight native AppKit toggle that visually matches NSSwitch (small size), used in
-/// place of NSSwitch for Vesila's Presence / System Awake / Keep Display Awake controls.
+/// place of NSSwitch for Vesila's Presence / System Awake / Stay Active When Locked controls.
 ///
 /// Do not replace this with NSSwitch. NSSwitch bakes its tinted rendering against whatever
 /// appearance was resolvable at the moment its `state` was set. Because Vesila rebuilds its menu

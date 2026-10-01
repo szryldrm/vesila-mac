@@ -1,7 +1,7 @@
 import Foundation
 
 /// Presence and System Awake: the two features that make up a Vesila session.
-/// Keep Display Awake is deliberately not part of this. It is a preference subordinate to System Awake.
+/// Stay Active When Locked is deliberately not part of this. It is a preference, not a feature.
 struct MainFeatures: Equatable {
     var presence = false
     var systemAwake = false
@@ -64,10 +64,21 @@ enum VesilaDuration: String, CaseIterable {
 /// Everything Vesila remembers across launches. Active features are never persisted:
 /// every launch starts with both main features off.
 struct VesilaPreferences: Equatable {
-    var keepDisplayAwake = true
+    /// When on, a screen lock no longer ends the session. Off by default.
+    var stayActiveWhenLocked = false
     var duration: VesilaDuration = .oneHour
     /// The combination right-click restores: the last non-empty one that was on. Both on first run.
     var lastActiveFeatures = MainFeatures.both
+}
+
+/// A system event that can end the session: sleep, screen lock, switching to another user, or
+/// closing the laptop lid. Nothing is ever reported on wake or unlock.
+enum VesilaInterruption: String {
+    // Raw values are logged; don't rename the cases.
+    case systemSleep
+    case screenLocked
+    case sessionResigned
+    case lidClosed
 }
 
 /// Vesila's complete application state, and the only place its rules are implemented.
@@ -77,8 +88,9 @@ struct VesilaPreferences: Equatable {
 /// - A session exists exactly while at least one main feature is on. It starts on the
 ///   none → any transition; turning the other feature on or off doesn't restart it.
 /// - `expirationDate` is nil whenever there is no session, or the duration is "Until turned off".
-/// - Keep Display Awake only takes effect together with System Awake (`preventsDisplaySleep`),
-///   and never affects the session.
+/// - Every interruption ends the session, except a screen lock while Stay Active When Locked is on.
+///   Nothing is ever restored after an interruption.
+/// - Changing Stay Active When Locked never affects the session.
 struct VesilaState: Equatable {
     private(set) var activeFeatures = MainFeatures.none
     private(set) var expirationDate: Date?
@@ -89,8 +101,6 @@ struct VesilaState: Equatable {
     }
 
     var isSessionActive: Bool { !activeFeatures.isEmpty }
-
-    var preventsDisplaySleep: Bool { activeFeatures.systemAwake && preferences.keepDisplayAwake }
 
     /// Time left in the session, or nil when there is no countdown.
     func remainingTime(at now: Date) -> TimeInterval? {
@@ -137,7 +147,14 @@ struct VesilaState: Equatable {
         }
     }
 
-    mutating func setKeepDisplayAwake(_ isOn: Bool) {
-        preferences.keepDisplayAwake = isOn
+    mutating func setStayActiveWhenLocked(_ isOn: Bool) {
+        preferences.stayActiveWhenLocked = isOn
+    }
+
+    /// Whether `interruption` ends the session; if it does, end it with `turnOff()`.
+    /// Only a screen lock can be ignored, and only while Stay Active When Locked is on.
+    /// Sleep, lid close, and switching to another user always end the session.
+    func shouldEndSession(for interruption: VesilaInterruption) -> Bool {
+        !(interruption == .screenLocked && preferences.stayActiveWhenLocked)
     }
 }

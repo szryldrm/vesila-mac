@@ -15,30 +15,20 @@ struct SystemIntegrationTests {
 
     @Test func systemAwakeHoldsOnlyTheSystemAssertion() {
         let service = PowerAssertionService()
-        #expect(service.update(preventSystemSleep: true, preventDisplaySleep: false))
+        #expect(service.update(preventSystemSleep: true))
         #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
-        service.releaseAll()
-        #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
-    }
+        #expect(!vesilaPowerAssertionTypesHeldByThisProcess().contains(displaySleepAssertionType))
 
-    @Test func displayAssertionOnlyExistsAlongsideTheSystemAssertion() {
-        let service = PowerAssertionService()
-        service.update(preventSystemSleep: false, preventDisplaySleep: true)
-        #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
-
-        service.update(preventSystemSleep: true, preventDisplaySleep: true)
-        #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
-
-        service.update(preventSystemSleep: false, preventDisplaySleep: true)
+        #expect(service.update(preventSystemSleep: false))
         #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
     }
 
     @Test func repeatedCallsNeitherLeakNorDoubleRelease() {
         let service = PowerAssertionService()
         for _ in 0..<3 {
-            service.update(preventSystemSleep: true, preventDisplaySleep: true)
+            service.update(preventSystemSleep: true)
         }
-        #expect(vesilaPowerAssertionTypesHeldByThisProcess().count == 2)
+        #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
         for _ in 0..<3 {
             service.releaseAll()
         }
@@ -48,8 +38,8 @@ struct SystemIntegrationTests {
     @Test func deallocationReleasesAssertions() {
         do {
             let service = PowerAssertionService()
-            service.update(preventSystemSleep: true, preventDisplaySleep: true)
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess().count == 2)
+            service.update(preventSystemSleep: true)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
         }
         #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
     }
@@ -72,29 +62,158 @@ struct SystemIntegrationTests {
             defer { controller.shutdown() }
             controller.setSystemAwakeActive(true)
             #expect(controller.state.activeFeatures == MainFeatures(presence: false, systemAwake: true))
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
 
             controller.setSystemAwakeActive(false)
             #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
         }
     }
 
-    @Test func keepDisplayAwakeIsSubordinateAndRemembered() {
+    /// Keep Display Awake is gone: System Awake never keeps the display on, whatever the new setting.
+    @Test(arguments: [true, false])
+    func systemAwakeNeverHoldsADisplayAssertion(stayActiveWhenLocked: Bool) {
         withTemporaryDefaults { defaults in
             let controller = makeController(defaults: defaults)
             defer { controller.shutdown() }
-
-            controller.setKeepDisplayAwake(false)
+            controller.setStayActiveWhenLocked(stayActiveWhenLocked)
             controller.setSystemAwakeActive(true)
             #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+            #expect(!vesilaPowerAssertionTypesHeldByThisProcess().contains(displaySleepAssertionType))
 
-            controller.setKeepDisplayAwake(true)
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
+            controller.setStayActiveWhenLocked(!stayActiveWhenLocked)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+        }
+    }
 
-            controller.setSystemAwakeActive(false)
+    // MARK: Stay Active When Locked
+
+    @Test func stayActiveWhenLockedIsOffByDefaultAndSurvivesARelaunch() {
+        withTemporaryDefaults { defaults in
+            // A value left behind by Keep Display Awake must not be carried over.
+            defaults.set(true, forKey: "keepDisplayAwake")
+
+            let controller = makeController(defaults: defaults)
+            #expect(!controller.state.preferences.stayActiveWhenLocked)
+            controller.setStayActiveWhenLocked(true)
+            controller.shutdown()
+
+            let relaunched = makeController(defaults: defaults)
+            #expect(relaunched.state.preferences.stayActiveWhenLocked)
+            #expect(relaunched.state.activeFeatures == .none, "the setting never starts a session")
+            relaunched.setStayActiveWhenLocked(false)
+            relaunched.shutdown()
+
+            let relaunchedAgain = makeController(defaults: defaults)
+            defer { relaunchedAgain.shutdown() }
+            #expect(!relaunchedAgain.state.preferences.stayActiveWhenLocked)
+        }
+    }
+
+    @Test func changingStayActiveWhenLockedLeavesTheSessionAlone() {
+        withTemporaryDefaults { defaults in
+            let controller = makeController(defaults: defaults, accessibilityGranted: { true })
+            defer { controller.shutdown() }
+            controller.quickToggle()
+            let expiration = controller.state.expirationDate
+
+            controller.setStayActiveWhenLocked(true)
+            #expect(controller.state.activeFeatures == .both)
+            #expect(controller.state.expirationDate == expiration)
+            #expect(controller.state.preferences.lastActiveFeatures == .both)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+        }
+    }
+
+    @Test func aLockWithStayActiveWhenLockedOffTurnsEverythingOff() {
+        withTemporaryDefaults { defaults in
+            let controller = makeController(defaults: defaults, accessibilityGranted: { true })
+            defer { controller.shutdown() }
+            controller.quickToggle()
+            #expect(controller.state.activeFeatures == .both)
+
+            controller.handleInterruption(.screenLocked)
+            #expect(controller.state.activeFeatures == .none)
+            #expect(controller.state.expirationDate == nil)
             #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
-            #expect(controller.state.preferences.keepDisplayAwake)
-            #expect(PreferencesStore(defaults: defaults).load().keepDisplayAwake)
+        }
+    }
+
+    @Test func aLockWithStayActiveWhenLockedOnChangesNothing() {
+        withTemporaryDefaults { defaults in
+            let controller = makeController(defaults: defaults, accessibilityGranted: { true })
+            defer { controller.shutdown() }
+            controller.setStayActiveWhenLocked(true)
+            controller.quickToggle()
+            let beforeLock = controller.state
+            var renders = 0
+            controller.onChange = { _ in renders += 1 }
+
+            controller.handleInterruption(.screenLocked)
+            #expect(controller.state == beforeLock)
+            #expect(controller.state.activeFeatures == .both)
+            #expect(controller.state.expirationDate == beforeLock.expirationDate)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+            // No render means `update(_:)` never ran, so services and the expiration timer were not touched.
+            #expect(renders == 0)
+        }
+    }
+
+    /// Vesila observes no unlock or wake event, so nothing is restored or restarted afterwards. The
+    /// real unlock notification is system-wide (distributed), so it isn't posted from a test; the
+    /// in-process "coming back" notifications are, and time is allowed to pass.
+    @Test(arguments: [true, false])
+    func nothingIsRestoredOrRestartedAfterALock(stayActiveWhenLocked: Bool) {
+        withTemporaryDefaults { defaults in
+            let controller = makeController(defaults: defaults, accessibilityGranted: { true })
+            defer { controller.shutdown() }
+            controller.setStayActiveWhenLocked(stayActiveWhenLocked)
+            controller.quickToggle()
+            controller.handleInterruption(.screenLocked)
+            let afterLock = controller.state
+            var renders = 0
+            controller.onChange = { _ in renders += 1 }
+
+            let workspaceCenter = NSWorkspace.shared.notificationCenter
+            for notification in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
+                workspaceCenter.post(name: notification, object: nil)
+            }
+            RunLoop.main.run(until: .now + 0.5)
+
+            #expect(controller.state == afterLock)
+            #expect(renders == 0)
+            #expect(controller.state.isSessionActive == stayActiveWhenLocked)
+            let expectedAssertions: [String] = stayActiveWhenLocked ? [systemSleepAssertionType] : []
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == expectedAssertions)
+        }
+    }
+
+    /// The expiration timer survives an ignored lock untouched, and its own callback still ends the
+    /// session. Durations are at least 30 minutes, so the real timer is fired rather than waited
+    /// for; `Timer.fire()` runs its block synchronously on this (main) thread.
+    @Test func theExpirationTimerSurvivesAnIgnoredLockAndEndsTheSession() throws {
+        try withTemporaryDefaults { defaults in
+            let controller = makeController(defaults: defaults)
+            defer { controller.shutdown() }
+            controller.setStayActiveWhenLocked(true)
+            controller.selectDuration(.thirtyMinutes)
+            controller.setSystemAwakeActive(true)
+            let expiration = try #require(controller.state.expirationDate)
+            let timer = try #require(controller.expirationTimer)
+
+            controller.handleInterruption(.screenLocked)
+            #expect(controller.expirationTimer === timer, "the lock neither cancels nor reschedules it")
+            #expect(timer.isValid)
+            #expect(abs(timer.fireDate.timeIntervalSince(expiration)) < 1)
+            #expect(controller.state.expirationDate == expiration)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+
+            timer.fire()
+            #expect(controller.state.activeFeatures == .none)
+            #expect(controller.state.expirationDate == nil)
+            #expect(controller.expirationTimer == nil)
+            #expect(!timer.isValid)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
+            #expect(controller.state.preferences.stayActiveWhenLocked, "expiry ends the session, not the setting")
         }
     }
 
@@ -145,15 +264,33 @@ struct SystemIntegrationTests {
         }
     }
 
-    @Test(arguments: [NSWorkspace.willSleepNotification, NSWorkspace.sessionDidResignActiveNotification])
-    func sleepAndUserSwitchTurnEverythingOff(notification: Notification.Name) {
+    @Test(arguments: [NSWorkspace.willSleepNotification, NSWorkspace.sessionDidResignActiveNotification], [true, false])
+    func sleepAndUserSwitchTurnEverythingOff(notification: Notification.Name, stayActiveWhenLocked: Bool) {
         withTemporaryDefaults { defaults in
             let controller = makeController(defaults: defaults, accessibilityGranted: { true })
             defer { controller.shutdown() }
+            controller.setStayActiveWhenLocked(stayActiveWhenLocked)
             controller.quickToggle()
             #expect(controller.state.isSessionActive)
 
             NSWorkspace.shared.notificationCenter.post(name: notification, object: nil)
+            #expect(controller.state.activeFeatures == .none)
+            #expect(controller.state.expirationDate == nil)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
+        }
+    }
+
+    /// The lid can't be closed from a test, so this drives the handler the lid monitor calls.
+    @Test(arguments: [true, false])
+    func lidCloseTurnsEverythingOff(stayActiveWhenLocked: Bool) {
+        withTemporaryDefaults { defaults in
+            let controller = makeController(defaults: defaults, accessibilityGranted: { true })
+            defer { controller.shutdown() }
+            controller.setStayActiveWhenLocked(stayActiveWhenLocked)
+            controller.quickToggle()
+            #expect(controller.state.isSessionActive)
+
+            controller.handleInterruption(.lidClosed)
             #expect(controller.state.activeFeatures == .none)
             #expect(controller.state.expirationDate == nil)
             #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
@@ -201,7 +338,7 @@ struct SystemIntegrationTests {
             presenceKeeper.tick(at: .now)
             #expect(controller.state.activeFeatures == MainFeatures(presence: false, systemAwake: true))
             #expect(controller.state.expirationDate == expiration, "the session is not restarted")
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
             let rendersAfterRevocation = renders
             #expect(rendersAfterRevocation == 2, "one render to turn on, one to turn Presence off")
 
@@ -235,6 +372,54 @@ struct SystemIntegrationTests {
             granted = true
             RunLoop.main.run(until: .now + 1.5)
             #expect(!controller.state.isSessionActive, "Vesila must stay off after sleep, even if access arrives later")
+        }
+    }
+
+    @Test func aLockWithStayActiveWhenLockedOffAbandonsAPendingPresenceActivation() {
+        withTemporaryDefaults { defaults in
+            var granted = false
+            let controller = makeController(defaults: defaults, accessibilityGranted: { granted })
+            defer { controller.shutdown() }
+
+            controller.activatePresenceWhenAccessibilityGranted()
+            controller.handleInterruption(.screenLocked)
+            granted = true
+            RunLoop.main.run(until: .now + 1.5)
+            #expect(!controller.state.isSessionActive, "Vesila must stay off after a lock, even if access arrives later")
+        }
+    }
+
+    /// Stay Active When Locked keeps a running session, not a pending activation: after the lock,
+    /// granting Accessibility must not switch Presence on, and the running System Awake session
+    /// (features, countdown, timer, assertion) must be exactly as it was.
+    @Test func anIgnoredLockKeepsTheSessionButAbandonsAPendingPresenceActivation() throws {
+        try withTemporaryDefaults { defaults in
+            var granted = false
+            let controller = makeController(defaults: defaults, accessibilityGranted: { granted })
+            defer { controller.shutdown() }
+            controller.setStayActiveWhenLocked(true)
+            controller.selectDuration(.thirtyMinutes)
+            controller.setSystemAwakeActive(true)
+            let beforeLock = controller.state
+            let expiration = try #require(controller.state.expirationDate)
+            let timer = try #require(controller.expirationTimer)
+
+            controller.activatePresenceWhenAccessibilityGranted()
+            var renders = 0
+            controller.onChange = { _ in renders += 1 }
+            controller.handleInterruption(.screenLocked)
+            granted = true
+            RunLoop.main.run(until: .now + 1.5)
+
+            // No render means neither the lock nor a late activation ran `update(_:)`.
+            #expect(renders == 0)
+            #expect(!controller.state.activeFeatures.presence, "the lock abandoned the pending activation")
+            #expect(controller.state == beforeLock)
+            #expect(controller.state.activeFeatures == MainFeatures(presence: false, systemAwake: true))
+            #expect(controller.state.expirationDate == expiration)
+            #expect(controller.expirationTimer === timer, "the lock neither cancels nor reschedules it")
+            #expect(timer.isValid)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
         }
     }
 }

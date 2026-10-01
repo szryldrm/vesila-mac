@@ -29,8 +29,8 @@ A lot of real work happens with your hands off the keyboard: reading documentati
 pull request, following a long build, thinking a problem through. Idle detection can't tell the
 difference, so apps such as Microsoft Teams flip your status to **Away** while you're sitting right
 there. Vesila lives in the menu bar and, when you switch it on, keeps macOS from reporting you as
-idle — without moving your cursor, clicking, or typing anything. It can also keep your Mac, and
-optionally its display, from going to sleep.
+idle — without moving your cursor, clicking, or typing anything. It can also keep your Mac from
+going to sleep.
 
 <!-- Add Vesila menu screenshot here -->
 
@@ -49,8 +49,8 @@ Vesila closes that gap with the smallest signal that works, and stays out of the
 - **It only acts when you're idle.** Nothing happens while you're typing or using the mouse.
 - **It's invisible.** One synthetic mouse-move at the cursor's current position. No movement,
   no clicks, no keystrokes.
-- **It steps back when you do.** Locking the screen, sleeping, closing the lid, or switching users
-  turns it off, and it stays off.
+- **It steps back when you do.** Sleeping, closing the lid, or switching users turns it off. Locking
+  the screen does too unless **Stay Active When Locked** is on.
 - **It starts clean.** Every launch begins with everything off.
 - **It's genuinely native.** Swift and AppKit, no runtime dependencies, no background service.
 
@@ -60,7 +60,7 @@ Vesila closes that gap with the smallest signal that works, and stays out of the
 | --- | --- | --- |
 | **Presence** | Keeps apps from marking you Away while you're idle at your Mac | Accessibility |
 | **System Awake** | Prevents idle system sleep | None |
-| **Keep Display Awake** | Also prevents idle display sleep while System Awake is on | None |
+| **Stay Active When Locked** | Keeps the session running while the screen is locked; off by default | None |
 
 ### Presence
 
@@ -83,17 +83,16 @@ small, invisible nudge.
 - Affects idle sleep only: choosing Sleep or closing the lid still works as usual, and ends the
   session
 
-### Keep Display Awake
+### Stay Active When Locked
 
-An optional setting that sits under System Awake.
-
-- Prevents **idle display sleep** as well
-- Only holds its display assertion while System Awake is on, and is dimmed in the menu otherwise
-- On by default, and remembered on its own: it isn't part of the combination that
-  [right-click](#right-click-quick-toggle) restores
-
-Switch it off when you want the Mac to keep working (a long download, say) while the screen goes
-dark.
+- Off by default, remembered across launches, and always available, even when System Awake is off
+- When off, locking the screen ends the session as usual
+- When on, locking the screen keeps Presence, System Awake, and the Active for countdown running
+- The Active for timer still ends the session when it runs out, even while the screen is locked
+- Sleep, lid close, and switching users always end the session, regardless of this setting
+- Unlocking changes nothing: a running session keeps running, and an ended one stays off
+- Needs no permission and doesn't change the menu bar icon
+- Isn't part of the combination that [right-click](#right-click-quick-toggle) restores
 
 ## How Presence works
 
@@ -141,7 +140,7 @@ Vesila is menu-bar-only: no Dock icon and no main window. **Left-click** the cup
 
 - a status card showing **Inactive**, the time remaining, or **Until turned off**
 - **Presence** and **System Awake** switches
-- **Keep Display Awake**, dimmed while System Awake is off
+- **Stay Active When Locked** switch below the Presence and System Awake cards
 - **Active for** duration options
 - **About Vesila** and **Quit Vesila** (<kbd>⌘</kbd> <kbd>Q</kbd> works while the menu is open)
 
@@ -190,7 +189,7 @@ The cup tells you what's running at a glance: **fill means Presence, steam means
   </tr>
 </table>
 
-Keep Display Awake doesn't change the icon. In the menu bar the icons are template images, so
+Stay Active When Locked doesn't change the icon. In the menu bar the icons are template images, so
 macOS draws them to match the menu bar's appearance.
 
 ### Active for
@@ -225,26 +224,26 @@ Presence and System Awake share a single session with one timer.
 - **While inactive**, it restores the last combination that was on. Until you've used another one,
   that's **Presence + System Awake**.
 
-A restored session uses your current Active for setting. Keep Display Awake keeps its own setting
-and isn't part of the combination. If the combination includes Presence but Accessibility hasn't
-been granted, Vesila restores the rest and asks for access.
+A restored session uses your current Active for setting. Stay Active When Locked keeps its own
+setting and isn't part of the combination. If the combination includes Presence but Accessibility
+hasn't been granted, Vesila restores the rest and asks for access.
 
 ### When Vesila turns itself off
 
 Vesila ends the session, switching off both Presence and System Awake, when:
 
-- the screen locks
+- the screen locks, unless Stay Active When Locked is on
 - the Mac goes to sleep
 - the laptop lid closes, including with an external display attached
 - you switch to another user
 - the Active for timer runs out
 
-When you come back (wake, unlock, lid open), **Vesila stays off**. It never silently switches
-itself back on; a right-click brings back your last combination.
+When you come back (wake, lid open), **Vesila stays off**. It never silently switches itself back
+on; a right-click brings back your last combination.
 
-Display sleep on its own doesn't end the session. Letting the display sleep while the Mac stays
-awake is exactly what System Awake without Keep Display Awake is for. If display sleep locks your
-screen, though, the lock ends it.
+Display sleep on its own doesn't end the session. If display sleep locks your screen, that lock ends
+the session unless Stay Active When Locked is on. Unlocking changes nothing: a running session
+keeps running, and an ended one stays off.
 
 Vesila also always launches with both features off, and quitting releases every power assertion.
 
@@ -256,7 +255,7 @@ Vesila also always launches with both features off, and quitting releases every 
 | **Input Monitoring** | No | Vesila never reads keystrokes or installs an event tap |
 | **Screen Recording** | No | Vesila never looks at your screen |
 
-System Awake and Keep Display Awake need no permission at all.
+System Awake and Stay Active When Locked need no permission at all.
 
 **Granting Accessibility.** If you turn on Presence without access, Vesila explains why it's needed
 and offers to open **System Settings › Privacy & Security › Accessibility**. Enable Vesila there and
@@ -269,8 +268,8 @@ later revoked, Presence switches itself off and System Awake keeps running.
 - **Minimal inputs.** Vesila reads how long it's been since the last input (a single number from
   macOS), the cursor position so the pulse lands where the cursor already is, the lid state, and
   the system's sleep, lock, and user-switch notifications.
-- **Minimal storage.** Four preferences in `UserDefaults`: the Active for duration, Keep Display
-  Awake, the right-click combination, and whether you've completed the welcome window. Whether a
+- **Minimal storage.** Four preferences in `UserDefaults`: the Active for duration, Stay Active When
+  Locked, the right-click combination, and whether you've completed the welcome window. Whether a
   feature is on is never stored.
 - **No special entitlements.** Release builds are signed with the Hardened Runtime and an empty
   entitlements file.
@@ -343,8 +342,8 @@ Extra arguments are passed through to `swift test`:
 The wrapper exists for machines with only the Command Line Tools, where plain `swift test` can't
 find the Swift Testing macro plugin. Everywhere else it's harmless.
 
-The suite has 47 tests in 9 suites, written with Swift Testing. It covers the state rules
-(sessions, durations, right-click memory, Keep Display Awake), Presence pulse timing, preference
+The suite has 62 tests in 9 suites, written with Swift Testing. It covers the state rules
+(sessions, durations, right-click memory, Stay Active When Locked), Presence pulse timing, preference
 persistence, and system integration: System Awake's power-assertion handling and the controller
 wiring, using real IOKit assertions that the test process holds briefly.
 
@@ -390,7 +389,7 @@ flowchart LR
 ```
 
 - **`VesilaState`** is a plain value type holding every rule: sessions, durations, right-click
-  memory, Keep Display Awake.
+  memory, Stay Active When Locked.
 - **`VesilaController`** is the single owner of that state. Every input goes through it: apply the
   transition, reconcile the services, persist preferences, notify the UI.
 - **`PresenceKeeper`** tracks real idle time and posts the activity pulse.
@@ -401,8 +400,10 @@ flowchart LR
 
 Because services are reconciled against the state rather than toggled ad hoc, the invariants hold
 by construction: System Awake off means no power assertion, no session means no timer, and launch
-or any interruption leaves both features off. If macOS refuses a power assertion, System Awake
-shows as off. It is never displayed as on without an assertion behind it.
+or any interruption leaves both features off. The one exception is a screen lock while Stay Active
+When Locked is on: it keeps the running session, but still cancels a pending Presence activation.
+If macOS refuses a power assertion, System Awake shows as off. It is never displayed as on without
+an assertion behind it.
 
 <details>
 <summary><strong>Platform APIs</strong></summary>
@@ -411,7 +412,7 @@ shows as off. It is never displayed as on without an assertion behind it.
 | --- | --- |
 | Menu bar UI | AppKit: `NSStatusItem`, a custom `NSView`-based menu |
 | Presence pulse and idle time | CoreGraphics: `CGEvent`, `CGEventSource` |
-| System and display awake | IOKit: `IOPMAssertionCreateWithName` |
+| System awake | IOKit: `IOPMAssertionCreateWithName` |
 | Lid state | IOKit: `IOPMrootDomain` clamshell state |
 | Sleep, lock, user switching | `NSWorkspace` and distributed notifications |
 | Accessibility check | ApplicationServices: `AXIsProcessTrusted` |
@@ -501,7 +502,7 @@ Vesila's power assertions are visible to `pmset`:
 pmset -g assertions | grep Vesila
 ```
 
-You should see `Vesila — System Awake`, plus `Vesila — Keep Display Awake` when that's on.
+You should see `Vesila — System Awake`.
 
 </details>
 
@@ -547,5 +548,6 @@ Vesila is an independent project and is not affiliated with or endorsed by Micro
 Teams is a trademark of the Microsoft group of companies.
 
 Vesila is meant to keep your status accurate while you're genuinely at your Mac, not to simulate
-work or get around workplace monitoring. It switches itself off when you lock your screen, put your
-Mac to sleep, or close the lid. Please use it in line with your organization's policies.
+work or get around workplace monitoring. It switches itself off when you put your Mac to sleep or
+close the lid, and by default when you lock your screen. Please use it in line with your
+organization's policies.

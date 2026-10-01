@@ -58,7 +58,7 @@ final class OnboardingWindowController: NSWindowController {
         let systemAwakeSection = makeSection(
             symbolName: "sun.max.fill",
             title: "System Awake",
-            description: "Prevents your Mac from sleeping, and can optionally keep the display awake.",
+            description: "Prevents your Mac from sleeping while it's on.",
             note: "No additional permission required."
         )
 

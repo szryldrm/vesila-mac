@@ -8,7 +8,7 @@ struct PreferencesStoreTests {
         withTemporaryDefaults { defaults in
             let store = PreferencesStore(defaults: defaults)
             let preferences = store.load()
-            #expect(preferences.keepDisplayAwake)
+            #expect(!preferences.stayActiveWhenLocked, "Stay Active When Locked is off by default")
             #expect(preferences.duration == .oneHour)
             #expect(preferences.lastActiveFeatures == .both)
             #expect(!store.isOnboardingCompleted)
@@ -19,7 +19,7 @@ struct PreferencesStoreTests {
         withTemporaryDefaults { defaults in
             let store = PreferencesStore(defaults: defaults)
             let preferences = VesilaPreferences(
-                keepDisplayAwake: false,
+                stayActiveWhenLocked: true,
                 duration: .threeHours,
                 lastActiveFeatures: MainFeatures(presence: false, systemAwake: true)
             )
@@ -28,11 +28,42 @@ struct PreferencesStoreTests {
         }
     }
 
+    @Test func stayActiveWhenLockedCanBeTurnedBackOff() {
+        withTemporaryDefaults { defaults in
+            let store = PreferencesStore(defaults: defaults)
+            store.save(VesilaPreferences(stayActiveWhenLocked: true))
+            #expect(store.load().stayActiveWhenLocked)
+            store.save(VesilaPreferences(stayActiveWhenLocked: false))
+            #expect(!store.load().stayActiveWhenLocked)
+        }
+    }
+
+    /// Keep Display Awake was a different setting: its stored value, whichever way it was set,
+    /// must never become Stay Active When Locked.
+    @Test(arguments: [true, false])
+    func neverCarriesOverTheOldKeepDisplayAwakeValue(oldValue: Bool) {
+        withTemporaryDefaults { defaults in
+            defaults.set(oldValue, forKey: "keepDisplayAwake")
+            let store = PreferencesStore(defaults: defaults)
+            #expect(!store.load().stayActiveWhenLocked)
+
+            store.save(store.load())
+            #expect(defaults.object(forKey: "stayActiveWhenLocked") as? Bool == false)
+        }
+    }
+
+    @Test func noLongerWritesKeepDisplayAwake() {
+        withTemporaryDefaults { defaults in
+            PreferencesStore(defaults: defaults).save(VesilaPreferences(stayActiveWhenLocked: true))
+            #expect(defaults.object(forKey: "keepDisplayAwake") == nil)
+            #expect(defaults.object(forKey: "stayActiveWhenLocked") as? Bool == true)
+        }
+    }
+
     /// Existing installs must keep their settings: these keys were written by earlier versions.
     @Test func readsValuesWrittenByEarlierVersions() {
         withTemporaryDefaults { defaults in
             defaults.set("twoHours", forKey: "selectedDuration")
-            defaults.set(false, forKey: "keepDisplayAwake")
             defaults.set(true, forKey: "lastEnabledConfiguration.hasValue")
             defaults.set(true, forKey: "lastEnabledConfiguration.presence")
             defaults.set(false, forKey: "lastEnabledConfiguration.systemAwake")
@@ -40,7 +71,6 @@ struct PreferencesStoreTests {
 
             let store = PreferencesStore(defaults: defaults)
             #expect(store.load() == VesilaPreferences(
-                keepDisplayAwake: false,
                 duration: .twoHours,
                 lastActiveFeatures: MainFeatures(presence: true, systemAwake: false)
             ))

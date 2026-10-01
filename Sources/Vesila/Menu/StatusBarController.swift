@@ -76,8 +76,8 @@ final class StatusBarController: NSObject {
             controller.setPresenceActive(isOn)
         case .setSystemAwake(let isOn):
             controller.setSystemAwakeActive(isOn)
-        case .setKeepDisplayAwake(let isOn):
-            controller.setKeepDisplayAwake(isOn)
+        case .setStayActiveWhenLocked(let isOn):
+            controller.setStayActiveWhenLocked(isOn)
         case .selectDuration(let duration):
             controller.selectDuration(duration)
         case .showAbout:

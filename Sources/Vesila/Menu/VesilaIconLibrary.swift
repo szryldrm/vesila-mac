@@ -2,7 +2,7 @@ import AppKit
 import OSLog
 
 /// The four status icons. Cup fill = Presence, steam = System Awake.
-/// Keep Display Awake has no icon of its own.
+/// Stay Active When Locked has no icon of its own.
 @MainActor
 enum VesilaIconLibrary {
     private static var cache: [String: NSImage] = [:]

@@ -134,40 +134,101 @@ struct QuickToggleMemoryTests {
     }
 }
 
-@Suite("Keep Display Awake")
-struct KeepDisplayAwakeTests {
-    @Test func onlyPreventsDisplaySleepTogetherWithSystemAwake() {
-        var state = VesilaState(preferences: VesilaPreferences(keepDisplayAwake: true))
-        #expect(!state.preventsDisplaySleep)
+@Suite("Stay Active When Locked")
+struct StayActiveWhenLockedTests {
+    private func activeSession(stayActiveWhenLocked: Bool) -> VesilaState {
+        var state = VesilaState(preferences: VesilaPreferences(stayActiveWhenLocked: stayActiveWhenLocked))
+        state.setActiveFeatures(.both, now: t0)
+        return state
+    }
+
+    /// What `VesilaController.handleInterruption(_:)` does to the state: ask the rule once, and
+    /// end the session through the normal `turnOff()` only when it says so.
+    private func interrupt(_ state: inout VesilaState, with interruption: VesilaInterruption) {
+        if state.shouldEndSession(for: interruption) {
+            state.turnOff()
+        }
+    }
+
+    @Test func isOffByDefault() {
+        #expect(!VesilaPreferences().stayActiveWhenLocked)
+        #expect(!VesilaState().preferences.stayActiveWhenLocked)
+    }
+
+    @Test func changingItNeverTouchesTheSession() {
+        var state = VesilaState()
+        state.setStayActiveWhenLocked(true)
+        #expect(!state.isSessionActive)
+        #expect(state.expirationDate == nil)
 
         state.setPresence(true, now: t0)
-        #expect(!state.preventsDisplaySleep)
-
-        state.setSystemAwake(true, now: t0)
-        #expect(state.preventsDisplaySleep)
-
-        state.setSystemAwake(false, now: t0)
-        #expect(!state.preventsDisplaySleep)
-        #expect(state.preferences.keepDisplayAwake, "the preference is remembered while System Awake is off")
-    }
-
-    @Test func respectsThePreferenceWhileSystemAwakeIsOn() {
-        var state = VesilaState()
-        state.setSystemAwake(true, now: t0)
-        state.setKeepDisplayAwake(false)
-        #expect(!state.preventsDisplaySleep)
-        state.setKeepDisplayAwake(true)
-        #expect(state.preventsDisplaySleep)
-    }
-
-    @Test func doesNotAffectTheSession() {
-        var state = VesilaState()
-        state.setKeepDisplayAwake(false)
-        #expect(!state.isSessionActive)
-
-        state.setSystemAwake(true, now: t0)
-        state.setKeepDisplayAwake(true)
+        state.setStayActiveWhenLocked(false)
+        state.setStayActiveWhenLocked(true)
+        #expect(state.activeFeatures == MainFeatures(presence: true, systemAwake: false))
         #expect(state.expirationDate == t0.addingTimeInterval(minutes(60)))
+        #expect(state.preferences.lastActiveFeatures == MainFeatures(presence: true, systemAwake: false),
+                "it is not part of what right-click restores")
+    }
+
+    @Test func aLockWithTheSettingOffEndsTheSession() {
+        var state = activeSession(stayActiveWhenLocked: false)
+        #expect(state.shouldEndSession(for: .screenLocked))
+        // Mutating calls can't go inside `#expect`, so the session is ended first.
+        state.turnOff()
+        #expect(state.activeFeatures == .none)
+        #expect(!state.isSessionActive)
+        #expect(state.expirationDate == nil)
+    }
+
+    @Test func aLockWithTheSettingOnKeepsTheSession() {
+        var state = activeSession(stayActiveWhenLocked: true)
+        let beforeLock = state
+        #expect(!state.shouldEndSession(for: .screenLocked))
+        interrupt(&state, with: .screenLocked)
+        #expect(state == beforeLock)
+        #expect(state.activeFeatures == .both)
+        #expect(state.activeFeatures.presence, "an active Presence stays on")
+        #expect(state.expirationDate == t0.addingTimeInterval(minutes(60)))
+    }
+
+    /// The full rule. It is asked on a `let`, so it can't change the state.
+    @Test(arguments: [VesilaInterruption.systemSleep, .screenLocked, .sessionResigned, .lidClosed], [true, false])
+    func onlyALockWithTheSettingOnKeepsTheSession(interruption: VesilaInterruption, stayActiveWhenLocked: Bool) {
+        let state = activeSession(stayActiveWhenLocked: stayActiveWhenLocked)
+        let keepsSession = interruption == .screenLocked && stayActiveWhenLocked
+        #expect(state.shouldEndSession(for: interruption) == !keepsSession)
+    }
+
+    @Test(arguments: [VesilaInterruption.systemSleep, .lidClosed, .sessionResigned], [true, false])
+    func sleepLidCloseAndUserSwitchAlwaysEndTheSession(interruption: VesilaInterruption, stayActiveWhenLocked: Bool) {
+        var state = activeSession(stayActiveWhenLocked: stayActiveWhenLocked)
+        #expect(state.shouldEndSession(for: interruption))
+        interrupt(&state, with: interruption)
+        #expect(state.activeFeatures == .none)
+        #expect(state.expirationDate == nil)
+        #expect(state.preferences.stayActiveWhenLocked == stayActiveWhenLocked, "the preference itself is kept")
+    }
+
+    /// Vesila has no unlock transition: the only way back on is an explicit intent. Further locks
+    /// (the monitor never reports an unlock) leave an ended session ended and a kept one untouched.
+    @Test(arguments: [true, false])
+    func nothingIsRestoredAfterALock(stayActiveWhenLocked: Bool) {
+        var state = activeSession(stayActiveWhenLocked: stayActiveWhenLocked)
+        interrupt(&state, with: .screenLocked)
+        let afterLock = state
+        interrupt(&state, with: .screenLocked)
+        #expect(state == afterLock)
+        #expect(state.isSessionActive == stayActiveWhenLocked)
+    }
+
+    /// Only the countdown itself; the controller tests fire the real expiration timer after a lock.
+    @Test func anIgnoredLockNeitherPausesNorRestartsTheCountdown() {
+        var state = VesilaState(preferences: VesilaPreferences(stayActiveWhenLocked: true, duration: .thirtyMinutes))
+        state.setActiveFeatures(.both, now: t0)
+        interrupt(&state, with: .screenLocked)
+        #expect(state.expirationDate == t0.addingTimeInterval(minutes(30)), "the lock neither pauses nor restarts it")
+        #expect(state.remainingTime(at: t0.addingTimeInterval(minutes(20))) == minutes(10))
+        #expect(state.remainingTime(at: t0.addingTimeInterval(minutes(45))) == 0)
     }
 }
 

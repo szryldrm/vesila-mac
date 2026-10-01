@@ -32,7 +32,7 @@ enum CardColor {
     static let hover = adaptive(light: 0.10, dark: 0.14, color: .labelColor)
     /// Active Presence / System Awake card, and the selected duration pill.
     static let accentFill = adaptive(light: 0.75, dark: 0.75, color: .controlAccentColor)
-    /// Active Keep Display Awake row, deliberately weaker than `accentFill`.
+    /// Stay Active When Locked row while on, deliberately weaker than `accentFill`.
     static let accentFillSubtle = adaptive(light: 0.58, dark: 0.58, color: .controlAccentColor)
     /// Selected duration pill outline.
     static let accentBorder = adaptive(light: 0.55, dark: 0.55, color: .controlAccentColor)

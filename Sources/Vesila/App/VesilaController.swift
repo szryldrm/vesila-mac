@@ -12,7 +12,9 @@ import OSLog
 ///
 /// Because services are always reconciled against the state (never toggled ad hoc), the
 /// invariants hold by construction: System Awake off means no power assertions; no session
-/// means no expiration timer; launch and every interruption leave both main features off.
+/// means no expiration timer; launch and every interruption leave both main features off, except
+/// a screen lock while Stay Active When Locked is on, which keeps the running session untouched.
+/// Every interruption, that lock included, abandons a pending Presence activation.
 @MainActor
 final class VesilaController {
     private(set) var state: VesilaState
@@ -31,7 +33,8 @@ final class VesilaController {
     private let presenceKeeper: PresenceKeeper
     private let powerAssertions = PowerAssertionService()
     private let interruptionMonitor = InterruptionMonitor()
-    private var expirationTimer: Timer?
+    /// Internal-readable so tests can fire the real timer instead of waiting out a duration.
+    private(set) var expirationTimer: Timer?
     private var accessibilityGrantTimer: Timer?
 
     /// `presenceKeeper` is only passed by tests, to drive its polls directly.
@@ -49,8 +52,7 @@ final class VesilaController {
             self?.turnPresenceOffAfterAccessibilityRevoked()
         }
         interruptionMonitor.start { [weak self] interruption in
-            Logger.vesila.info("Turning off after interruption: \(interruption.rawValue, privacy: .public)")
-            self?.turnOff()
+            self?.handleInterruption(interruption)
         }
     }
 
@@ -70,8 +72,8 @@ final class VesilaController {
         update { $0.setSystemAwake(isOn, now: .now) }
     }
 
-    func setKeepDisplayAwake(_ isOn: Bool) {
-        update { $0.setKeepDisplayAwake(isOn) }
+    func setStayActiveWhenLocked(_ isOn: Bool) {
+        update { $0.setStayActiveWhenLocked(isOn) }
     }
 
     func selectDuration(_ duration: VesilaDuration) {
@@ -98,7 +100,8 @@ final class VesilaController {
     }
 
     /// Turns both main features off. Also abandons a pending Presence activation, so nothing
-    /// switches back on by itself after right-click-off, expiration, sleep, lock, or lid close.
+    /// switches back on by itself after right-click-off, expiration, or quit. Every interruption
+    /// abandons it too in `handleInterruption(_:)`, including a lock that keeps the session.
     func turnOff() {
         cancelPendingPresenceActivation()
         update { $0.turnOff() }
@@ -117,6 +120,20 @@ final class VesilaController {
                 controller.cancelPendingPresenceActivation()
             }
         }
+    }
+
+    /// Called by `InterruptionMonitor`; internal so tests can drive lock and lid close, which can't
+    /// be posted in-process. Every interruption first abandons a pending Presence activation, so
+    /// nothing switches on by itself afterwards. An ignored lock then returns before `update(_:)`,
+    /// so state, services, and the expiration timer are left exactly as they were.
+    func handleInterruption(_ interruption: VesilaInterruption) {
+        cancelPendingPresenceActivation()
+        guard state.shouldEndSession(for: interruption) else {
+            Logger.vesila.info("Staying active after interruption: \(interruption.rawValue, privacy: .public) (Stay Active When Locked is on)")
+            return
+        }
+        Logger.vesila.info("Turning off after interruption: \(interruption.rawValue, privacy: .public)")
+        update { $0.turnOff() }
     }
 
     /// Called at quit: stops observing the system and releases everything.
@@ -139,10 +156,7 @@ final class VesilaController {
 
     /// Makes the services match `state`. Each service call is idempotent.
     private func reconcileServices(with previous: VesilaState) {
-        let systemAwakeHeld = powerAssertions.update(
-            preventSystemSleep: state.activeFeatures.systemAwake,
-            preventDisplaySleep: state.preventsDisplaySleep
-        )
+        let systemAwakeHeld = powerAssertions.update(preventSystemSleep: state.activeFeatures.systemAwake)
         if !systemAwakeHeld {
             // Never show System Awake as on without an assertion actually backing it.
             Logger.vesila.error("System Awake could not create its power assertion; leaving it off.")

@@ -7,7 +7,7 @@ final class VesilaMenuView: NSView {
     enum Action {
         case setPresence(Bool)
         case setSystemAwake(Bool)
-        case setKeepDisplayAwake(Bool)
+        case setStayActiveWhenLocked(Bool)
         case selectDuration(VesilaDuration)
         case showAbout
         case quit
@@ -16,14 +16,14 @@ final class VesilaMenuView: NSView {
     private let statusCard = GlobalStatusCardView()
     private let presenceCard: FeatureCardView
     private let systemAwakeCard: FeatureCardView
-    private let displayRow: DisplayAwakeRowView
+    private let stayActiveRow: StayActiveWhenLockedRowView
     private let durationPicker: ActiveForView
     private let content = NSStackView()
 
     init(state: VesilaState, now: Date, onAction: @escaping (Action) -> Void) {
         presenceCard = FeatureCardView(title: "Presence") { onAction(.setPresence($0)) }
         systemAwakeCard = FeatureCardView(title: "System Awake") { onAction(.setSystemAwake($0)) }
-        displayRow = DisplayAwakeRowView { onAction(.setKeepDisplayAwake($0)) }
+        stayActiveRow = StayActiveWhenLockedRowView { onAction(.setStayActiveWhenLocked($0)) }
         durationPicker = ActiveForView { onAction(.selectDuration($0)) }
         super.init(frame: NSRect(x: 0, y: 0, width: MenuStyle.width, height: 1))
 
@@ -38,12 +38,12 @@ final class VesilaMenuView: NSView {
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = MenuStyle.gap
-        for view in [statusCard, features, displayRow, durationPicker, separator, footer] {
+        for view in [statusCard, features, stayActiveRow, durationPicker, separator, footer] {
             content.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         }
         content.setCustomSpacing(MenuStyle.childGap, after: features)
-        content.setCustomSpacing(MenuStyle.sectionGap, after: displayRow)
+        content.setCustomSpacing(MenuStyle.sectionGap, after: stayActiveRow)
         content.setCustomSpacing(MenuStyle.sectionGap, after: durationPicker)
         content.setCustomSpacing(MenuStyle.smallGap, after: separator)
         content.translatesAutoresizingMaskIntoConstraints = false
@@ -66,7 +66,7 @@ final class VesilaMenuView: NSView {
         statusCard.update(features: state.activeFeatures, statusLine: VesilaFormatter.statusLine(for: state, at: now))
         presenceCard.update(isOn: state.activeFeatures.presence)
         systemAwakeCard.update(isOn: state.activeFeatures.systemAwake)
-        displayRow.update(isOn: state.preferences.keepDisplayAwake, isEnabled: state.activeFeatures.systemAwake)
+        stayActiveRow.update(isOn: state.preferences.stayActiveWhenLocked)
         durationPicker.update(selected: state.preferences.duration)
         resizeToFitContent()
     }
