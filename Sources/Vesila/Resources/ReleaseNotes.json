@@ -1,0 +1,10 @@
+[
+  {
+    "version": "1.0.3",
+    "notes": [
+      "Vesila now checks for stable updates automatically in the background using Sparkle.",
+      "Use About → Check for Updates to check for a new version whenever you want.",
+      "Updates are verified before installation and installed with your confirmation."
+    ]
+  }
+]

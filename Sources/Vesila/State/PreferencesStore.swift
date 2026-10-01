@@ -12,6 +12,7 @@ struct PreferencesStore {
         static let lastActivePresence = "lastEnabledConfiguration.presence"
         static let lastActiveSystemAwake = "lastEnabledConfiguration.systemAwake"
         static let onboardingCompleted = "onboardingCompleted"
+        static let lastLaunchedVersion = "lastLaunchedVersion"
     }
 
     private let defaults: UserDefaults
@@ -47,6 +48,11 @@ struct PreferencesStore {
         defaults.set(true, forKey: Key.hasLastActiveFeatures)
         defaults.set(preferences.lastActiveFeatures.presence, forKey: Key.lastActivePresence)
         defaults.set(preferences.lastActiveFeatures.systemAwake, forKey: Key.lastActiveSystemAwake)
+    }
+
+    var lastLaunchedVersion: String? {
+        get { defaults.string(forKey: Key.lastLaunchedVersion) }
+        nonmutating set { defaults.set(newValue, forKey: Key.lastLaunchedVersion) }
     }
 
     var isOnboardingCompleted: Bool {

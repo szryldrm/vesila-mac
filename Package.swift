@@ -15,7 +15,8 @@ let package = Package(
                 .copy("Resources/vesila-idle.svg"),
                 .copy("Resources/vesila-presence.svg"),
                 .copy("Resources/vesila-awake.svg"),
-                .copy("Resources/vesila-both.svg")
+                .copy("Resources/vesila-both.svg"),
+                .copy("Resources/ReleaseNotes.json")
             ],
             linkerSettings: [
                 .linkedFramework("IOKit"),

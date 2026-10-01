@@ -7,6 +7,7 @@ explicit builds without a public key show an explanation instead of starting the
 
 The only app network requests are the HTTPS appcast and the requested update archive (including
 GitHub's HTTPS asset redirects). No telemetry, accounts, analytics or system profile is sent.
+Release notes for the What’s New window are bundled in the app; they make no network requests.
 This feed has no external release-note links. Sparkle retains update settings and the last-check
 date locally. Automatic checks do not change Presence, System Awake or onboarding state.
 
@@ -71,6 +72,11 @@ errors can include their input. No private credential is required by the tracked
 External, untracked `Scripts/release.sh` / `Scripts/deploy_github.sh` remain the owners of
 version bumps, notarization credentials, DMG creation, checksums and deployment. Add the following
 tracked calls at the specified points; do not inspect, replace or commit those local scripts.
+Before building each release, add its version and user-facing notes to
+`Sources/Vesila/Resources/ReleaseNotes.json`. Keep earlier entries to cover skipped updates.
+A version without an entry has no release notes of its own; the What’s New window is skipped
+when no entries match the update.
+
 Commands below are run from the repo root. Set identities/profile names locally, for example:
 
 ```sh
