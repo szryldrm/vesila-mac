@@ -155,6 +155,42 @@ struct StayActiveWhenLockedTests {
         #expect(!VesilaState().preferences.stayActiveWhenLocked)
     }
 
+    @Test(arguments: [MainFeatures.none, .both,
+                      MainFeatures(presence: true, systemAwake: false),
+                      MainFeatures(presence: false, systemAwake: true)], [true, false])
+    func availabilityDependsOnlyOnSystemAwake(features: MainFeatures, storedChoice: Bool) {
+        var state = VesilaState(preferences: VesilaPreferences(stayActiveWhenLocked: storedChoice))
+        state.setActiveFeatures(features, now: t0)
+        #expect(state.isStayActiveWhenLockedAvailable == features.systemAwake)
+    }
+
+    @Test(arguments: [true, false])
+    func presenceOnlySessionsEndOnLock(storedChoice: Bool) {
+        var state = VesilaState(preferences: VesilaPreferences(stayActiveWhenLocked: storedChoice))
+        state.setPresence(true, now: t0)
+        #expect(state.shouldEndSession(for: .screenLocked))
+        interrupt(&state, with: .screenLocked)
+        #expect(state.activeFeatures == .none)
+        #expect(state.expirationDate == nil)
+        #expect(state.preferences.stayActiveWhenLocked == storedChoice)
+    }
+
+    @Test(arguments: [true, false])
+    func systemAwakeChangesKeepTheStoredChoice(storedChoice: Bool) {
+        var state = VesilaState(preferences: VesilaPreferences(stayActiveWhenLocked: storedChoice))
+        state.setActiveFeatures(.both, now: t0)
+        let expiration = state.expirationDate
+        state.setSystemAwake(false, now: t0.addingTimeInterval(60))
+        #expect(!state.isStayActiveWhenLockedAvailable)
+        #expect(state.preferences.stayActiveWhenLocked == storedChoice)
+        #expect(state.shouldEndSession(for: .screenLocked))
+        state.setSystemAwake(true, now: t0.addingTimeInterval(120))
+        #expect(state.isStayActiveWhenLockedAvailable)
+        #expect(state.preferences.stayActiveWhenLocked == storedChoice)
+        #expect(state.shouldEndSession(for: .screenLocked) == !storedChoice)
+        #expect(state.expirationDate == expiration)
+    }
+
     @Test func changingItNeverTouchesTheSession() {
         var state = VesilaState()
         state.setStayActiveWhenLocked(true)
@@ -191,12 +227,17 @@ struct StayActiveWhenLockedTests {
         #expect(state.expirationDate == t0.addingTimeInterval(minutes(60)))
     }
 
-    /// The full rule. It is asked on a `let`, so it can't change the state.
+    /// The full interruption rule across all feature combinations and stored choices.
     @Test(arguments: [VesilaInterruption.systemSleep, .screenLocked, .sessionResigned, .lidClosed], [true, false])
-    func onlyALockWithTheSettingOnKeepsTheSession(interruption: VesilaInterruption, stayActiveWhenLocked: Bool) {
-        let state = activeSession(stayActiveWhenLocked: stayActiveWhenLocked)
-        let keepsSession = interruption == .screenLocked && stayActiveWhenLocked
-        #expect(state.shouldEndSession(for: interruption) == !keepsSession)
+    func onlyALockWithTheSettingOnAndSystemAwakeKeepsTheSession(interruption: VesilaInterruption, stayActiveWhenLocked: Bool) {
+        for features in [MainFeatures.none, .both,
+                         MainFeatures(presence: true, systemAwake: false),
+                         MainFeatures(presence: false, systemAwake: true)] {
+            var state = VesilaState(preferences: VesilaPreferences(stayActiveWhenLocked: stayActiveWhenLocked))
+            state.setActiveFeatures(features, now: t0)
+            let keepsSession = interruption == .screenLocked && stayActiveWhenLocked && features.systemAwake
+            #expect(state.shouldEndSession(for: interruption) == !keepsSession)
+        }
     }
 
     @Test(arguments: [VesilaInterruption.systemSleep, .lidClosed, .sessionResigned], [true, false])

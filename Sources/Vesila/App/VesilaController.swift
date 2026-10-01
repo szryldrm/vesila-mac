@@ -13,7 +13,8 @@ import OSLog
 /// Because services are always reconciled against the state (never toggled ad hoc), the
 /// invariants hold by construction: System Awake off means no power assertions; no session
 /// means no expiration timer; launch and every interruption leave both main features off, except
-/// a screen lock while Stay Active When Locked is on, which keeps the running session untouched.
+/// a screen lock while Stay Active When Locked is on and System Awake is active, which keeps
+/// the running session untouched. Turning System Awake off keeps the stored lock preference.
 /// Every interruption, that lock included, abandons a pending Presence activation.
 @MainActor
 final class VesilaController {
