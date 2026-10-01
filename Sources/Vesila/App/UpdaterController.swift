@@ -45,9 +45,10 @@ final class UpdaterController: NSObject, SPUStandardUserDriverDelegate {
         )
         standardController = controller
         checkObservation = controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] _, change in
+            let canCheckForUpdates = change.newValue ?? false
             // Sparkle's updater and our custom button are main-thread objects.
             MainActor.assumeIsolated {
-                self?.canCheckForUpdates = change.newValue ?? false
+                self?.canCheckForUpdates = canCheckForUpdates
             }
         }
         controller.startUpdater()
@@ -67,18 +68,23 @@ final class UpdaterController: NSObject, SPUStandardUserDriverDelegate {
         standardController?.checkForUpdates(nil)
     }
 
-    var supportsGentleScheduledUpdateReminders: Bool { true }
+    // Sparkle's delegate requirements are nonisolated, but its callbacks run on the main thread.
+    nonisolated var supportsGentleScheduledUpdateReminders: Bool { true }
 
-    func standardUserDriverWillHandleShowingUpdate(
+    nonisolated func standardUserDriverWillHandleShowingUpdate(
         _ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState
     ) {
         // Use Sparkle's gentle scheduling policy; bring its alert forward without adding a Dock icon.
-        if handleShowingUpdate {
-            NSApp.activate(ignoringOtherApps: true)
+        MainActor.assumeIsolated {
+            if handleShowingUpdate {
+                NSApp.activate(ignoringOtherApps: true)
+            }
         }
     }
 
-    func standardUserDriverWillShowModalAlert() {
-        NSApp.activate(ignoringOtherApps: true)
+    nonisolated func standardUserDriverWillShowModalAlert() {
+        MainActor.assumeIsolated {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }

@@ -41,8 +41,9 @@ final class AboutWindowController: NSWindowController {
         let updateButton = VesilaActionButton(title: "Check for Updates", symbolName: "arrow.clockwise", style: .primary)
         updateButton.onAction = { [weak self] in self?.updaterController.checkForUpdates() }
         updateObservation = updaterController.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak updateButton] _, change in
+            let canCheckForUpdates = change.newValue ?? false
             MainActor.assumeIsolated {
-                updateButton?.isEnabled = change.newValue ?? false
+                updateButton?.isEnabled = canCheckForUpdates
             }
         }
         let githubButton = VesilaActionButton(title: "GitHub", symbolName: "arrow.up.right", style: .secondary)
