@@ -29,3 +29,18 @@ Releases/
 
 # Local agent planning files
 /docs/superpowers/
+
+# Sparkle exported private keys (commit only Packaging/SparklePublicEDKey)
+*private*key*
+*Private*Key*
+*.ed25519
+*.edkey
+sparkle-keys/
+# Generated feeds and update archives
+appcast*.xml
+*.zip
+*.zip.sha256
+
+# Python release-helper caches
+__pycache__/
+*.pyc
