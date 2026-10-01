@@ -109,6 +109,49 @@ struct SystemIntegrationTests {
         }
     }
 
+    @Test(arguments: [true, false])
+    func presenceOnlyLockEndsTheSessionWhateverTheStoredChoice(storedChoice: Bool) {
+        withTemporaryDefaults { defaults in
+            let controller = makeController(defaults: defaults, accessibilityGranted: { true })
+            defer { controller.shutdown() }
+            controller.setStayActiveWhenLocked(storedChoice)
+            controller.setPresenceActive(true)
+            controller.handleInterruption(.screenLocked)
+            #expect(controller.state.activeFeatures == .none)
+            #expect(controller.state.expirationDate == nil)
+            #expect(controller.expirationTimer == nil)
+            #expect(controller.state.preferences.stayActiveWhenLocked == storedChoice)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
+        }
+    }
+
+    @Test(arguments: [true, false])
+    func systemAwakeChangesAndRelaunchKeepTheLockPreference(storedChoice: Bool) {
+        withTemporaryDefaults { defaults in
+            let controller = makeController(defaults: defaults)
+            controller.setStayActiveWhenLocked(storedChoice)
+            var renderedAvailability: [Bool] = []
+            controller.onChange = { renderedAvailability.append($0.isStayActiveWhenLockedAvailable) }
+            controller.setSystemAwakeActive(true)
+            controller.setSystemAwakeActive(false)
+            #expect(controller.state.preferences.stayActiveWhenLocked == storedChoice)
+            #expect(PreferencesStore(defaults: defaults).load().stayActiveWhenLocked == storedChoice)
+            controller.setSystemAwakeActive(true)
+            #expect(controller.state.preferences.stayActiveWhenLocked == storedChoice)
+            #expect(renderedAvailability == [true, false, true])
+            controller.setSystemAwakeActive(false)
+            controller.shutdown()
+
+            let relaunched = makeController(defaults: defaults)
+            defer { relaunched.shutdown() }
+            #expect(relaunched.state.preferences.stayActiveWhenLocked == storedChoice)
+            #expect(!relaunched.state.isStayActiveWhenLockedAvailable)
+            relaunched.setSystemAwakeActive(true)
+            #expect(relaunched.state.isStayActiveWhenLockedAvailable)
+            #expect(relaunched.state.shouldEndSession(for: .screenLocked) == !storedChoice)
+        }
+    }
+
     @Test func changingStayActiveWhenLockedLeavesTheSessionAlone() {
         withTemporaryDefaults { defaults in
             let controller = makeController(defaults: defaults, accessibilityGranted: { true })

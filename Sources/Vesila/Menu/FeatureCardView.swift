@@ -41,14 +41,16 @@ final class FeatureCardView: MenuSurfaceView {
     }
 }
 
-/// Full-width row for Stay Active When Locked. Always enabled: it's a remembered preference, not
-/// part of the session, so it doesn't depend on System Awake or the Active for timer.
+/// Full-width row for a remembered preference, available only while System Awake is active.
+/// Shows the stored choice even while disabled, with a hint and the same height in both states.
 final class StayActiveWhenLockedRowView: MenuSurfaceView {
     private static let title = "Stay Active When Locked"
+    private static let requirement = "Requires System Awake"
 
     private let toggle = VesilaToggleControl()
     private let label = NSTextField(labelWithString: StayActiveWhenLockedRowView.title)
     private let icon = NSImageView()
+    private let hint = NSTextField(labelWithString: StayActiveWhenLockedRowView.requirement)
     private let onToggle: (Bool) -> Void
 
     init(onToggle: @escaping (Bool) -> Void) {
@@ -62,13 +64,20 @@ final class StayActiveWhenLockedRowView: MenuSurfaceView {
         toggle.target = self
         toggle.action = #selector(toggled)
         toggle.setAccessibilityLabel(Self.title)
-        let content = NSStackView(views: [icon, label, NSView(), toggle])
+        hint.font = .systemFont(ofSize: 10)
+        hint.textColor = .secondaryLabelColor
+        hint.isHidden = true
+        let text = NSStackView(views: [label, hint])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 2
+        let content = NSStackView(views: [icon, text, NSView(), toggle])
         content.orientation = .horizontal
         content.alignment = .centerY
         content.spacing = MenuStyle.childGap
         MenuStyle.pin(content, to: self, inset: MenuStyle.gap)
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 38),
+            heightAnchor.constraint(equalToConstant: 48),
             icon.widthAnchor.constraint(equalToConstant: 16)
         ])
     }
@@ -80,8 +89,14 @@ final class StayActiveWhenLockedRowView: MenuSurfaceView {
 
     @objc private func toggled() { onToggle(toggle.isOn) }
 
-    func update(isOn: Bool) {
+    func update(isOn: Bool, isAvailable: Bool) {
         toggle.isOn = isOn
-        fillColor = isOn ? CardColor.accentFillSubtle : CardColor.surface
+        toggle.isEnabled = isAvailable
+        label.textColor = isAvailable ? .labelColor : .secondaryLabelColor
+        icon.contentTintColor = isAvailable ? .secondaryLabelColor : .tertiaryLabelColor
+        hint.isHidden = isAvailable
+        toolTip = isAvailable ? nil : Self.requirement
+        toggle.setAccessibilityHelp(isAvailable ? nil : Self.requirement)
+        fillColor = isOn && isAvailable ? CardColor.accentFillSubtle : CardColor.surface
     }
 }

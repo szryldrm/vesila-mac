@@ -70,7 +70,10 @@ final class VesilaMenuView: NSView {
         statusCard.update(features: state.activeFeatures, statusLine: VesilaFormatter.statusLine(for: state, at: now))
         presenceCard.update(isOn: state.activeFeatures.presence)
         systemAwakeCard.update(isOn: state.activeFeatures.systemAwake)
-        stayActiveRow.update(isOn: state.preferences.stayActiveWhenLocked)
+        stayActiveRow.update(
+            isOn: state.preferences.stayActiveWhenLocked,
+            isAvailable: state.isStayActiveWhenLockedAvailable
+        )
         durationPicker.update(selected: state.preferences.duration)
         resizeToFitContent()
     }

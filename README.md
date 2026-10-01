@@ -50,7 +50,7 @@ Vesila closes that gap with the smallest signal that works, and stays out of the
 - **It's invisible.** One synthetic mouse-move at the cursor's current position. No movement,
   no clicks, no keystrokes.
 - **It steps back when you do.** Sleeping, closing the lid, or switching users turns it off. Locking
-  the screen does too unless **Stay Active When Locked** is on.
+  the screen does too unless **Stay Active When Locked** is on and **System Awake** is active.
 - **It starts clean.** Every launch begins with everything off.
 - **It's native.** Swift and AppKit, with Sparkle 2 for secure updates.
 
@@ -60,7 +60,7 @@ Vesila closes that gap with the smallest signal that works, and stays out of the
 | --- | --- | --- |
 | **Presence** | Keeps apps from marking you Away while you're idle at your Mac | Accessibility |
 | **System Awake** | Prevents idle system sleep | None |
-| **Stay Active When Locked** | Keeps the session running while the screen is locked; off by default | None |
+| **Stay Active When Locked** | Keeps the session running while locked when System Awake is active; off by default | None |
 
 ### Presence
 
@@ -85,9 +85,13 @@ small, invisible nudge.
 
 ### Stay Active When Locked
 
-- Off by default, remembered across launches, and always available, even when System Awake is off
+- Off by default and remembered across launches; available only while System Awake is active
+- When System Awake is off, the row is disabled and shows “Requires System Awake”; it still shows
+  your stored choice, which applies again when System Awake turns on
 - When off, locking the screen ends the session as usual
-- When on, locking the screen keeps Presence, System Awake, and the Active for countdown running
+- When on and System Awake is active, locking the screen keeps the active features and the Active
+  for countdown running
+- Presence-only sessions always end on lock, regardless of the stored choice
 - The Active for timer still ends the session when it runs out, even while the screen is locked
 - Sleep, lid close, and switching users always end the session, regardless of this setting
 - Unlocking changes nothing: a running session keeps running, and an ended one stays off
@@ -140,7 +144,8 @@ Vesila is menu-bar-only: no Dock icon and no main window. **Left-click** the cup
 
 - a status card showing **Inactive**, the time remaining, or **Until turned off**
 - **Presence** and **System Awake** switches
-- **Stay Active When Locked** switch below the Presence and System Awake cards
+- **Stay Active When Locked** switch below the Presence and System Awake cards, disabled with a
+  “Requires System Awake” hint while System Awake is off
 - **Active for** duration options
 - **About Vesila** (including **Check for Updates…**) and **Quit Vesila**
   (<kbd>⌘</kbd> <kbd>Q</kbd> works while the menu is open)
@@ -233,7 +238,7 @@ hasn't been granted, Vesila restores the rest and asks for access.
 
 Vesila ends the session, switching off both Presence and System Awake, when:
 
-- the screen locks, unless Stay Active When Locked is on
+- the screen locks, unless Stay Active When Locked is on and System Awake is active
 - the Mac goes to sleep
 - the laptop lid closes, including with an external display attached
 - you switch to another user
@@ -243,7 +248,8 @@ When you come back (wake, lid open), **Vesila stays off**. It never silently swi
 on; a right-click brings back your last combination.
 
 Display sleep on its own doesn't end the session. If display sleep locks your screen, that lock ends
-the session unless Stay Active When Locked is on. Unlocking changes nothing: a running session
+the session unless Stay Active When Locked is on and System Awake is active. Presence-only sessions
+always end on lock. Unlocking changes nothing: a running session
 keeps running, and an ended one stays off.
 
 Vesila also always launches with both features off, and quitting releases every power assertion.
@@ -417,7 +423,8 @@ flowchart LR
 Because services are reconciled against the state rather than toggled ad hoc, the invariants hold
 by construction: System Awake off means no power assertion, no session means no timer, and launch
 or any interruption leaves both features off. The one exception is a screen lock while Stay Active
-When Locked is on: it keeps the running session, but still cancels a pending Presence activation.
+When Locked is on and System Awake is active: it keeps the running session, but still cancels a
+pending Presence activation. The lock preference is retained when System Awake turns off.
 If macOS refuses a power assertion, System Awake shows as off. It is never displayed as on without
 an assertion behind it.
 

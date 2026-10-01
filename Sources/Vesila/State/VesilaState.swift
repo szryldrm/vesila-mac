@@ -64,7 +64,7 @@ enum VesilaDuration: String, CaseIterable {
 /// Everything Vesila remembers across launches. Active features are never persisted:
 /// every launch starts with both main features off.
 struct VesilaPreferences: Equatable {
-    /// When on, a screen lock no longer ends the session. Off by default.
+    /// When on and System Awake is active, a screen lock no longer ends the session. Off by default.
     var stayActiveWhenLocked = false
     var duration: VesilaDuration = .oneHour
     /// The combination right-click restores: the last non-empty one that was on. Both on first run.
@@ -88,8 +88,10 @@ enum VesilaInterruption: String {
 /// - A session exists exactly while at least one main feature is on. It starts on the
 ///   none → any transition; turning the other feature on or off doesn't restart it.
 /// - `expirationDate` is nil whenever there is no session, or the duration is "Until turned off".
-/// - Every interruption ends the session, except a screen lock while Stay Active When Locked is on.
-///   Nothing is ever restored after an interruption.
+/// - Every interruption ends the session, except a screen lock while Stay Active When Locked
+///   is on and System Awake is active. Nothing is ever restored after an interruption.
+/// - Stay Active When Locked is available only while System Awake is active; its stored
+///   preference is kept when System Awake turns off.
 /// - Changing Stay Active When Locked never affects the session.
 struct VesilaState: Equatable {
     private(set) var activeFeatures = MainFeatures.none
@@ -101,6 +103,9 @@ struct VesilaState: Equatable {
     }
 
     var isSessionActive: Bool { !activeFeatures.isEmpty }
+
+    /// Shared by the menu enablement and the screen-lock rule; independent of the stored choice.
+    var isStayActiveWhenLockedAvailable: Bool { activeFeatures.systemAwake }
 
     /// Time left in the session, or nil when there is no countdown.
     func remainingTime(at now: Date) -> TimeInterval? {
@@ -152,9 +157,10 @@ struct VesilaState: Equatable {
     }
 
     /// Whether `interruption` ends the session; if it does, end it with `turnOff()`.
-    /// Only a screen lock can be ignored, and only while Stay Active When Locked is on.
+    /// Only a screen lock can be ignored, and only while Stay Active When Locked is on
+    /// and available because System Awake is active.
     /// Sleep, lid close, and switching to another user always end the session.
     func shouldEndSession(for interruption: VesilaInterruption) -> Bool {
-        !(interruption == .screenLocked && preferences.stayActiveWhenLocked)
+        !(interruption == .screenLocked && preferences.stayActiveWhenLocked && isStayActiveWhenLockedAvailable)
     }
 }
