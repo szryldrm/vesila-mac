@@ -33,6 +33,18 @@ struct ReleaseNotesWindowTests {
         let button = try #require(descendants(of: root).compactMap { $0 as? VesilaActionButton }.first)
         let heading = try #require(descendants(of: root).compactMap { $0 as? NSTextField }
             .first { $0.stringValue == "What's New in Vesila 1.0.3" })
+        let labels = descendants(of: root).compactMap { $0 as? NSTextField }
+        #expect(!labels.contains { $0.stringValue == "Vesila" })
+        #expect(textView.string.hasPrefix("• "))
+        #expect(textView.string == Array(repeating: "• \(note)", count: noteCount).joined(separator: "\n\n"))
+        let title = heading.attributedStringValue
+        let versionRange = (title.string as NSString).range(of: "1.0.3")
+        let prefixFont = try #require(title.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+        let versionFont = try #require(title.attribute(.font, at: versionRange.location, effectiveRange: nil) as? NSFont)
+        #expect(!NSFontManager.shared.traits(of: prefixFont).contains(.boldFontMask))
+        #expect(NSFontManager.shared.traits(of: versionFont).contains(.boldFontMask))
+        #expect(title.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .labelColor)
+        #expect(title.attribute(.foregroundColor, at: versionRange.location, effectiveRange: nil) as? NSColor == .controlAccentColor)
         let buttonFrame = button.convert(button.bounds, to: root)
         let headingFrame = heading.convert(heading.bounds, to: root)
         #expect(root.bounds.contains(buttonFrame))

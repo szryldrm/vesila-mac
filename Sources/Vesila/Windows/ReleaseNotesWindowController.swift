@@ -31,9 +31,16 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
 
     private func makeContentView() -> NSView {
         let icon = WindowChrome.makeAppIconView()
-        let name = WindowChrome.makeAppNameLabel()
         let heading = NSTextField(wrappingLabelWithString: "What's New in Vesila \(version)")
-        heading.font = .systemFont(ofSize: 13, weight: .semibold)
+        let title = NSMutableAttributedString(string: "What's New in Vesila ", attributes: [
+            .font: NSFont.systemFont(ofSize: 17),
+            .foregroundColor: NSColor.labelColor
+        ])
+        title.append(NSAttributedString(string: version, attributes: [
+            .font: NSFont.systemFont(ofSize: 17, weight: .bold),
+            .foregroundColor: NSColor.controlAccentColor
+        ]))
+        heading.attributedStringValue = title
         heading.alignment = .center
 
         // Measure at the full card width first: short notes need no scroll view.
@@ -51,9 +58,7 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer?.widthTracksTextView = false
         textView.textContainer?.heightTracksTextView = false
-        textView.string = entries.map { entry in
-            "Version \(entry.version)\n\n" + entry.notes.map { "• \($0)" }.joined(separator: "\n\n")
-        }.joined(separator: "\n\n")
+        textView.string = entries.flatMap(\.notes).map { "• \($0)" }.joined(separator: "\n\n")
         let cardWidth = Self.contentSize.width - 60
         let textWidth = cardWidth - 24
         let textHeight = ReleaseNotesScrollView.sizeDocument(textView, width: textWidth)
@@ -87,7 +92,7 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
 
         let continueButton = VesilaActionButton(title: "Continue", style: .primary)
         continueButton.onAction = { [weak self] in self?.window?.close() }
-        var views: [NSView] = [icon, name, heading, card]
+        var views: [NSView] = [icon, heading, card]
         if needsScrolling {
             let hint = NSTextField(labelWithString: "Scroll to read more ↓")
             hint.font = .systemFont(ofSize: 11)
@@ -99,7 +104,6 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         content.alignment = .centerX
         content.spacing = 16
         content.setCustomSpacing(8, after: icon)
-        content.setCustomSpacing(8, after: name)
         if needsScrolling { content.setCustomSpacing(6, after: card) }
         NSLayoutConstraint.activate([
             heading.widthAnchor.constraint(equalTo: content.widthAnchor),
