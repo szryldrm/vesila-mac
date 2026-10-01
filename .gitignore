@@ -3,9 +3,29 @@
 *.xcodeproj
 DerivedData/
 .DS_Store
+
+# Signing, credentials, and local configuration
 *.p12
+*.p8
+*.pem
 *.key
+*.cer
+*.crt
 *.certSigningRequest
+*.mobileprovision
+.env
+.env.*
+!.env.example
+
+# Release artifacts
+Releases/
+*.dmg
+*.dmg.sha256
+
+# Local maintainer tooling
+/Scripts/release.sh
+/Scripts/deploy_github.sh
+/DISTRIBUTION.md
 
 # Local agent planning files
 /docs/superpowers/

@@ -56,4 +56,4 @@ fi
 
 echo "App bundle created at: $APP_BUNDLE"
 echo ""
-echo "For a signed, notarized release DMG, run Scripts/release.sh (see DISTRIBUTION.md)."
+echo "For signed, notarized releases, use the maintainer release tooling kept outside this repository."
