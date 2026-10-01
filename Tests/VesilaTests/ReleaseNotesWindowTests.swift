@@ -15,22 +15,37 @@ struct ReleaseNotesWindowTests {
         ], onClose: {})
         let root = try #require(controller.window?.contentView)
         root.layoutSubtreeIfNeeded()
-        let scrollView = try #require(descendants(of: root).compactMap { $0 as? NSScrollView }.first)
-        scrollView.layoutSubtreeIfNeeded()
-        let textView = try #require(scrollView.documentView as? NSTextView)
+        let scrollView = descendants(of: root).compactMap { $0 as? NSScrollView }.first
+        scrollView?.layoutSubtreeIfNeeded()
+        let textView = try #require(descendants(of: root).compactMap { $0 as? NSTextView }.first)
         let container = try #require(textView.textContainer)
         let manager = try #require(textView.layoutManager)
         manager.ensureLayout(for: container)
         let usedRect = manager.usedRect(for: container)
 
-        #expect(!scrollView.hasHorizontalScroller)
-        #expect(abs(textView.frame.width - scrollView.contentView.bounds.width) < 1)
+        #expect(root.bounds.width == 560)
         #expect(abs(container.containerSize.width + 2 * textView.textContainerInset.width
-            - scrollView.contentView.bounds.width) < 1)
+            - textView.frame.width) < 1)
         #expect(usedRect.width <= container.containerSize.width + 1)
         #expect(textView.frame.height >= usedRect.maxY + 2 * textView.textContainerInset.height)
+        let hint = descendants(of: root).compactMap { $0 as? NSTextField }
+            .first { $0.stringValue == "Scroll to read more ↓" }
         if noteCount == 80 {
+            let scrollView = try #require(scrollView)
+            #expect(!scrollView.hasHorizontalScroller)
+            #expect(scrollView.hasVerticalScroller)
+            #expect(scrollView.scrollerStyle == .legacy)
+            #expect(!scrollView.autohidesScrollers)
+            #expect(scrollView.verticalScroller?.isHidden == false)
+            #expect(abs(textView.frame.width - scrollView.contentView.bounds.width) < 1)
             #expect(textView.frame.height > scrollView.contentView.bounds.height)
+            let scroller = try #require(scrollView.verticalScroller)
+            #expect(scroller.frame.minX >= scrollView.contentView.frame.maxX - 1)
+            #expect(hint != nil)
+        } else {
+            #expect(scrollView == nil)
+            #expect(hint == nil)
+            #expect(root.bounds.contains(textView.convert(textView.bounds, to: root)))
         }
         let button = try #require(descendants(of: root).compactMap { $0 as? VesilaActionButton }.first)
         #expect(root.bounds.contains(button.convert(button.bounds, to: root)))

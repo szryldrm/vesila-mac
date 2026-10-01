@@ -2,7 +2,7 @@ import AppKit
 
 @MainActor
 final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
-    private static let contentSize = NSSize(width: 460, height: 470)
+    private static let contentSize = NSSize(width: 560, height: 520)
     private let version: String
     private let entries: [ReleaseNotes]
     private let onClose: () -> Void
@@ -36,14 +36,7 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         heading.font = .systemFont(ofSize: 13, weight: .semibold)
         heading.alignment = .center
 
-        let scrollView = ReleaseNotesScrollView()
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.drawsBackground = false
-        scrollView.borderType = .noBorder
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-
-        // The scroll view sizes the document from its actual viewport after Auto Layout.
+        // Measure at the full card width first: short notes need no scroll view.
         let textView = NSTextView(frame: .zero)
         textView.isEditable = false
         textView.isSelectable = true
@@ -61,20 +54,57 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         textView.string = entries.map { entry in
             "Version \(entry.version)\n\n" + entry.notes.map { "• \($0)" }.joined(separator: "\n\n")
         }.joined(separator: "\n\n")
-        scrollView.documentView = textView
+        let cardWidth = Self.contentSize.width - 60
+        let textWidth = cardWidth - 24
+        let textHeight = ReleaseNotesScrollView.sizeDocument(textView, width: textWidth)
+        let needsScrolling = textHeight > 220
+        let notesView: NSView
+        if needsScrolling {
+            let scrollView = ReleaseNotesScrollView()
+            // Legacy scrollers stay visible even when the system prefers overlay scrollers.
+            scrollView.scrollerStyle = .legacy
+            scrollView.hasVerticalScroller = true
+            scrollView.autohidesScrollers = false
+            scrollView.hasHorizontalScroller = false
+            scrollView.drawsBackground = false
+            scrollView.borderType = .noBorder
+            scrollView.documentView = textView
+            notesView = scrollView
+        } else {
+            notesView = textView
+        }
+        notesView.translatesAutoresizingMaskIntoConstraints = false
+        let card = ReleaseNotesCardView()
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(notesView)
+        NSLayoutConstraint.activate([
+            notesView.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
+            notesView.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -12),
+            notesView.topAnchor.constraint(equalTo: card.topAnchor, constant: 12),
+            notesView.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -12),
+            notesView.heightAnchor.constraint(equalToConstant: needsScrolling ? 220 : textHeight)
+        ])
 
         let continueButton = VesilaActionButton(title: "Continue", style: .primary)
         continueButton.onAction = { [weak self] in self?.window?.close() }
-        let content = NSStackView(views: [icon, name, heading, scrollView, continueButton])
+        var views: [NSView] = [icon, name, heading, card]
+        if needsScrolling {
+            let hint = NSTextField(labelWithString: "Scroll to read more ↓")
+            hint.font = .systemFont(ofSize: 11)
+            hint.textColor = .secondaryLabelColor
+            views.append(hint)
+        }
+        views.append(continueButton)
+        let content = NSStackView(views: views)
         content.orientation = .vertical
         content.alignment = .centerX
         content.spacing = 16
         content.setCustomSpacing(8, after: icon)
         content.setCustomSpacing(8, after: name)
+        if needsScrolling { content.setCustomSpacing(6, after: card) }
         NSLayoutConstraint.activate([
             heading.widthAnchor.constraint(equalTo: content.widthAnchor),
-            scrollView.widthAnchor.constraint(equalTo: content.widthAnchor),
-            scrollView.heightAnchor.constraint(equalToConstant: 220)
+            card.widthAnchor.constraint(equalTo: content.widthAnchor)
         ])
         return WindowChrome.makeContentView(size: Self.contentSize, content: content) { [weak self] in
             self?.window?.close()
@@ -92,24 +122,46 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
 private final class ReleaseNotesScrollView: NSScrollView {
     override func layout() {
         super.layout()
-        guard let textView = documentView as? NSTextView,
-              let textContainer = textView.textContainer,
-              let layoutManager = textView.layoutManager else { return }
+        guard let textView = documentView as? NSTextView else { return }
 
         let viewportSize = contentView.bounds.size
         guard viewportSize.width > 0 else { return }
+        Self.sizeDocument(textView, width: viewportSize.width, minimumHeight: viewportSize.height)
+    }
+
+    @discardableResult
+    static func sizeDocument(_ textView: NSTextView, width: CGFloat, minimumHeight: CGFloat = 0) -> CGFloat {
+        guard let textContainer = textView.textContainer,
+              let layoutManager = textView.layoutManager else { return minimumHeight }
         let inset = textView.textContainerInset
         textContainer.containerSize = NSSize(
-            width: max(1, viewportSize.width - 2 * inset.width),
+            width: max(1, width - 2 * inset.width),
             height: CGFloat.greatestFiniteMagnitude
         )
         layoutManager.ensureLayout(for: textContainer)
-        let documentSize = NSSize(
-            width: viewportSize.width,
-            height: max(viewportSize.height, ceil(layoutManager.usedRect(for: textContainer).maxY) + 2 * inset.height)
-        )
+        let height = max(minimumHeight, ceil(layoutManager.usedRect(for: textContainer).maxY) + 2 * inset.height)
+        let documentSize = NSSize(width: width, height: height)
         if textView.frame.size != documentSize {
             textView.setFrameSize(documentSize)
         }
+        return height
+    }
+}
+
+/// Semantic AppKit colors resolve for the current Light/Dark appearance when drawn.
+@MainActor
+private final class ReleaseNotesCardView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 8, yRadius: 8)
+        NSColor.controlBackgroundColor.setFill()
+        outline.fill()
+        NSColor.separatorColor.setStroke()
+        outline.lineWidth = 1
+        outline.stroke()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
     }
 }
