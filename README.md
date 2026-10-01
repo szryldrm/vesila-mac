@@ -12,7 +12,7 @@ while you're still at your Mac — and keeps your Mac awake when you need it to.
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&logo=apple&logoColor=white)
 ![Swift](https://img.shields.io/badge/Swift-F05138?style=flat-square&logo=swift&logoColor=white)
 ![AppKit](https://img.shields.io/badge/UI-AppKit-0A84FF?style=flat-square)
-![No dependencies](https://img.shields.io/badge/dependencies-none-30D158?style=flat-square)
+![Sparkle 2](https://img.shields.io/badge/updater-Sparkle_2-30D158?style=flat-square)
 
 [Features](#features) ·
 [How Presence works](#how-presence-works) ·
@@ -52,7 +52,7 @@ Vesila closes that gap with the smallest signal that works, and stays out of the
 - **It steps back when you do.** Sleeping, closing the lid, or switching users turns it off. Locking
   the screen does too unless **Stay Active When Locked** is on.
 - **It starts clean.** Every launch begins with everything off.
-- **It's genuinely native.** Swift and AppKit, no runtime dependencies, no background service.
+- **It's native.** Swift and AppKit, with Sparkle 2 for secure updates.
 
 ## Features
 
@@ -142,7 +142,8 @@ Vesila is menu-bar-only: no Dock icon and no main window. **Left-click** the cup
 - **Presence** and **System Awake** switches
 - **Stay Active When Locked** switch below the Presence and System Awake cards
 - **Active for** duration options
-- **About Vesila** and **Quit Vesila** (<kbd>⌘</kbd> <kbd>Q</kbd> works while the menu is open)
+- **About Vesila** (including **Check for Updates…**) and **Quit Vesila**
+  (<kbd>⌘</kbd> <kbd>Q</kbd> works while the menu is open)
 
 On first launch, a short welcome window introduces both features and offers to enable
 Accessibility. Granting it there is optional. The window comes back on each launch until you press
@@ -262,15 +263,16 @@ and offers to open **System Settings › Privacy & Security › Accessibility**.
 Presence turns on automatically; Vesila watches for the grant for up to three minutes. If access is
 later revoked, Presence switches itself off and System Awake keeps running.
 
-**Privacy.** Everything Vesila does happens on your Mac.
+**Privacy.** Presence and System Awake operate locally.
 
-- **No networking code.** No accounts, analytics, telemetry, cloud service, or update checks.
+- **Update traffic only.** Sparkle fetches an HTTPS appcast and downloads an update archive when
+  requested. No accounts, analytics, telemetry, or system profile is sent.
 - **Minimal inputs.** Vesila reads how long it's been since the last input (a single number from
   macOS), the cursor position so the pulse lands where the cursor already is, the lid state, and
   the system's sleep, lock, and user-switch notifications.
-- **Minimal storage.** Four preferences in `UserDefaults`: the Active for duration, Stay Active When
+- **Minimal storage.** App preferences in `UserDefaults`: the Active for duration, Stay Active When
   Locked, the right-click combination, and whether you've completed the welcome window. Whether a
-  feature is on is never stored.
+  feature is on is never stored. Sparkle also stores update preferences and its last-check date.
 - **No special entitlements.** Release builds are signed with the Hardened Runtime and an empty
   entitlements file.
 
@@ -278,7 +280,9 @@ later revoked, Presence switches itself off and System Awake keeps running.
 
 > [!NOTE]
 > Signed and notarized releases are published on [GitHub Releases](https://github.com/szryldrm/vesila-mac/releases).
-> The current release is **Vesila 1.0.2**.
+> Download the latest stable release and copy Vesila.app to Applications.
+> **Users of 1.0.2 must install the first updater-enabled release manually once.**
+> Version 1.0.2 has no updater and cannot offer that upgrade. Quit the old copy before replacing it.
 
 Once it's installed:
 
@@ -286,6 +290,17 @@ Once it's installed:
 2. If you plan to use Presence, click **Enable Accessibility** and switch Vesila on in System
    Settings.
 3. Left-click the cup to turn on what you need, or right-click to toggle.
+
+## Updates
+
+Updater-enabled releases check automatically about once a day, after launch setup. Checks run in
+the background; installing an offered update requires confirmation. Use **About Vesila → Check
+for Updates…** for an immediate check. If already current, Sparkle reports “You're up to date”.
+Updates come only from stable GitHub Releases. Drafts and prereleases are excluded by the stable
+feed URL. Archives are checked using EdDSA and Developer ID signatures over HTTPS; altered
+archives are rejected. Local builds without a configured public key cannot check for updates.
+
+See [update setup, release checklist, and verification runbook](docs/UPDATES.md).
 
 ## Building from source
 
@@ -299,7 +314,8 @@ xcode-select --install   # only if you have neither Xcode nor the Command Line T
 From the repository root:
 
 ```sh
-./Scripts/build_app.sh
+# Use the maintainer public key, or explicitly disable updates for a local build:
+VESILA_ALLOW_NO_UPDATE_KEY=1 ./Scripts/build_app.sh
 open .build/app/Vesila.app
 ```
 
@@ -307,6 +323,9 @@ open .build/app/Vesila.app
 
 - copies `Packaging/Info.plist`, where `LSUIElement` makes Vesila a menu-bar-only agent app
 - stamps the version and build number from `VERSION` and `BUILD_NUMBER`
+- resolves the pinned Sparkle 2 dependency, embeds its framework and helper services
+- stamps `SUPublicEDKey` from `Packaging/SparklePublicEDKey` (override: `SPARKLE_PUBLIC_ED_KEY`);
+  a missing or placeholder key fails unless the explicit local opt-out above is used
 - bundles the status bar icons
 - generates `Vesila.icns` from `app-icon.png`
 
@@ -342,7 +361,7 @@ Extra arguments are passed through to `swift test`:
 The wrapper exists for machines with only the Command Line Tools, where plain `swift test` can't
 find the Swift Testing macro plugin. Everywhere else it's harmless.
 
-The suite has 63 tests in 9 suites, written with Swift Testing. It covers the state rules
+The suite uses Swift Testing. It covers update configuration gating and the state rules
 (sessions, durations, right-click memory, Stay Active When Locked), Presence pulse timing, preference
 persistence, and system integration: System Awake's power-assertion handling and the controller
 wiring, using real IOKit assertions that the test process holds briefly.
@@ -352,17 +371,19 @@ wiring, using real IOKit assertions that the test process holds briefly.
 Maintainer release tooling is intentionally kept outside the repository so signing identities,
 notarization credentials, local Keychain profiles, and deployment configuration stay local.
 
-The release process runs the full test suite, updates `VERSION` and `BUILD_NUMBER`, builds the app,
-Developer ID signs it with Hardened Runtime, notarizes, staples, and verifies the app and DMG, and
-produces a SHA-256 checksum. Published artifacts are uploaded to GitHub Releases.
+The release process runs tests, bumps `VERSION` and `BUILD_NUMBER`, runs `build_app.sh` then
+`sign_app.sh`, notarizes and staples, and preserves the existing app/DMG verification and SHA-256
+steps. Next, archive the stapled app and run `make_appcast.sh`. Publish both the update ZIP and
+`appcast.xml` on a non-draft, non-prerelease GitHub Release. The [ordered checklist](docs/UPDATES.md)
+shows exactly where these tracked steps fit into external release tooling.
 
 Tracked source code must never contain signing certificates, private keys, passwords, tokens, or
 notarization credentials.
 
 ## Architecture
 
-Vesila is a single Swift package with one executable target and one test target. It has no
-third-party dependencies, no Xcode project, and no web views. One rule shapes the design: **all
+Vesila is a single Swift package with one executable target and one test target. It depends on
+Sparkle 2 for updates, with no Xcode project or web views. One rule shapes the design: **all
 behavior rules live in one value type, and every change flows through one controller.**
 
 ```mermaid
@@ -386,6 +407,7 @@ flowchart LR
   memory, Stay Active When Locked.
 - **`VesilaController`** is the single owner of that state. Every input goes through it: apply the
   transition, reconcile the services, persist preferences, notify the UI.
+- **`UpdaterController`** owns Sparkle, gates development builds, and exposes manual checks to About.
 - **`PresenceKeeper`** tracks real idle time and posts the activity pulse.
 - **`PowerAssertionService`** acquires and releases the IOKit assertions idempotently.
 - **`InterruptionMonitor`** reports sleep, screen lock, user switching, and lid close.
@@ -428,11 +450,12 @@ Sources/Vesila/
 ├── Windows/      Welcome and About windows
 └── Resources/    The four status bar icons (SVG)
 Tests/VesilaTests/  State, Presence timing, preferences, system integration
-Scripts/            build_app.sh, test.sh
-Packaging/          Info.plist, entitlements
+Scripts/            build/test, Developer ID signing, appcast generation and validation
+Packaging/          Info.plist, entitlements, public Sparkle key
 ```
 
-Maintainer signing, notarization, and deployment tooling is local-only and intentionally untracked.
+Secret-free signing and appcast helpers are tracked; maintainer notarization credentials and
+deployment orchestration stay local and untracked.
 
 </details>
 
@@ -534,7 +557,7 @@ log stream --level info --predicate 'subsystem == "com.sezeryildirim.vesila"'
 The features described above are implemented and covered by the test suite.
 
 - **Version:** tracked in [`VERSION`](VERSION)
-- **Latest release:** [Vesila 1.0.2](https://github.com/szryldrm/vesila-mac/releases/tag/v1.0.2), signed and notarized
+- **Latest release:** [GitHub Releases](https://github.com/szryldrm/vesila-mac/releases/latest), signed and notarized
 - **License:** All rights reserved. See [LICENSE](LICENSE).
 
 ## Disclaimer

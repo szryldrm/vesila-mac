@@ -11,8 +11,7 @@ enum VesilaConfig {
         return value
     }()
     static let tagline = "Stay present while you read, think, or review."
-    /// The About window's GitHub button stays disabled until this is set.
-    static let githubURL: URL? = nil
+    static let githubURL = URL(string: "https://github.com/szryldrm/vesila-mac")
 }
 
 extension Logger {

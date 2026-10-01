@@ -2,6 +2,7 @@ import AppKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let updaterController = UpdaterController()
     private let preferencesStore = PreferencesStore()
     private var controller: VesilaController?
     private var statusBarController: StatusBarController?
@@ -13,10 +14,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let controller = VesilaController(preferencesStore: preferencesStore)
         self.controller = controller
-        statusBarController = StatusBarController(controller: controller)
+        statusBarController = StatusBarController(controller: controller, updaterController: updaterController)
 
         if !preferencesStore.isOnboardingCompleted {
             showOnboarding()
+        }
+
+        // Yield until launch and onboarding setup have finished. Sparkle schedules its own checks.
+        DispatchQueue.main.async { [weak self] in
+            self?.updaterController.start()
         }
     }
 
