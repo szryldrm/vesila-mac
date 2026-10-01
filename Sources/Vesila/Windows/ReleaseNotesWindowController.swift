@@ -2,7 +2,7 @@ import AppKit
 
 @MainActor
 final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
-    private static let contentSize = NSSize(width: 560, height: 520)
+    private static let contentSize = NSSize(width: 640, height: 520)
     private let version: String
     private let entries: [ReleaseNotes]
     private let onClose: () -> Void
@@ -94,7 +94,6 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
             hint.textColor = .secondaryLabelColor
             views.append(hint)
         }
-        views.append(continueButton)
         let content = NSStackView(views: views)
         content.orientation = .vertical
         content.alignment = .centerX
@@ -106,9 +105,18 @@ final class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
             heading.widthAnchor.constraint(equalTo: content.widthAnchor),
             card.widthAnchor.constraint(equalTo: content.widthAnchor)
         ])
-        return WindowChrome.makeContentView(size: Self.contentSize, content: content) { [weak self] in
+        let root = WindowChrome.makeContentView(size: Self.contentSize, content: content) { [weak self] in
             self?.window?.close()
         }
+        // Keep the primary action at the window bottom, independent of notes length.
+        continueButton.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(continueButton)
+        NSLayoutConstraint.activate([
+            continueButton.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            continueButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -24),
+            content.bottomAnchor.constraint(lessThanOrEqualTo: continueButton.topAnchor, constant: -16)
+        ])
+        return root
     }
 
     func windowWillClose(_ notification: Notification) {

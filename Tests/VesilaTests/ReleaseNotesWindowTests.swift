@@ -5,11 +5,11 @@ import Testing
 @Suite("ReleaseNotes window layout")
 @MainActor
 struct ReleaseNotesWindowTests {
-    @Test(arguments: [1, 80])
+    @Test(arguments: [1, 240])
     func notesWrapAndDocumentFitsAllLines(noteCount: Int) throws {
         _ = NSApplication.shared
         let note = "A long release note that should wrap within the readable viewport. "
-            + String(repeating: "More details about this update. ", count: 8)
+            + String(repeating: "More details about this update. ", count: 12)
         let controller = ReleaseNotesWindowController(version: "1.0.3", entries: [
             ReleaseNotes(version: "1.0.3", notes: Array(repeating: note, count: noteCount))
         ], onClose: {})
@@ -23,14 +23,22 @@ struct ReleaseNotesWindowTests {
         manager.ensureLayout(for: container)
         let usedRect = manager.usedRect(for: container)
 
-        #expect(root.bounds.width == 560)
+        #expect(root.bounds.width == 640)
         #expect(abs(container.containerSize.width + 2 * textView.textContainerInset.width
             - textView.frame.width) < 1)
         #expect(usedRect.width <= container.containerSize.width + 1)
         #expect(textView.frame.height >= usedRect.maxY + 2 * textView.textContainerInset.height)
         let hint = descendants(of: root).compactMap { $0 as? NSTextField }
             .first { $0.stringValue == "Scroll to read more ↓" }
-        if noteCount == 80 {
+        let button = try #require(descendants(of: root).compactMap { $0 as? VesilaActionButton }.first)
+        let heading = try #require(descendants(of: root).compactMap { $0 as? NSTextField }
+            .first { $0.stringValue == "What's New in Vesila 1.0.3" })
+        let buttonFrame = button.convert(button.bounds, to: root)
+        let headingFrame = heading.convert(heading.bounds, to: root)
+        #expect(root.bounds.contains(buttonFrame))
+        #expect(root.bounds.contains(headingFrame))
+        #expect(abs(buttonFrame.minY - 24) < 1)
+        if noteCount == 240 {
             let scrollView = try #require(scrollView)
             #expect(!scrollView.hasHorizontalScroller)
             #expect(scrollView.hasVerticalScroller)
@@ -42,13 +50,39 @@ struct ReleaseNotesWindowTests {
             let scroller = try #require(scrollView.verticalScroller)
             #expect(scroller.frame.minX >= scrollView.contentView.frame.maxX - 1)
             #expect(hint != nil)
+            #expect(textView.frame.height > 10 * scrollView.contentView.bounds.height)
+            #expect(!button.isDescendant(of: scrollView))
+            #expect(!heading.isDescendant(of: scrollView))
+            let viewportFrame = scrollView.convert(scrollView.bounds, to: root)
+            #expect(buttonFrame.maxY + 16 <= viewportFrame.minY)
+            #expect(headingFrame.minY >= viewportFrame.maxY)
+
+            // Read to the last line, then return to the start. Only the clip view moves.
+            let lastLine = manager.boundingRect(
+                forGlyphRange: NSRange(location: manager.numberOfGlyphs - 1, length: 1),
+                in: container
+            ).offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y)
+            for end in [true, false] {
+                let y = end ? textView.frame.height - scrollView.contentView.bounds.height : 0
+                scrollView.contentView.scroll(to: NSPoint(x: 0, y: y))
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+                root.layoutSubtreeIfNeeded()
+                #expect(abs(scrollView.contentView.bounds.minX) < 1)
+                #expect(button.convert(button.bounds, to: root) == buttonFrame)
+                #expect(heading.convert(heading.bounds, to: root) == headingFrame)
+                #expect(scrollView.convert(scrollView.bounds, to: root) == viewportFrame)
+                if end {
+                    #expect(textView.visibleRect.contains(lastLine))
+                    #expect(abs(textView.visibleRect.maxY - textView.bounds.maxY) < 1)
+                } else {
+                    #expect(abs(textView.visibleRect.minY) < 1)
+                }
+            }
         } else {
             #expect(scrollView == nil)
             #expect(hint == nil)
             #expect(root.bounds.contains(textView.convert(textView.bounds, to: root)))
         }
-        let button = try #require(descendants(of: root).compactMap { $0 as? VesilaActionButton }.first)
-        #expect(root.bounds.contains(button.convert(button.bounds, to: root)))
     }
 
     private func descendants(of view: NSView) -> [NSView] {
