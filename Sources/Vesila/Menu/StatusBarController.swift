@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 
 /// Owns the menu bar item. It renders `VesilaController.state` into the status icon and the open
 /// menu, and forwards clicks back to the controller. It holds no application state of its own.
@@ -9,6 +10,7 @@ import AppKit
 @MainActor
 final class StatusBarController: NSObject {
     private let controller: VesilaController
+    private let loginItemController = LoginItemController(service: MainAppLoginItemService())
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let updaterController: UpdaterController
     private lazy var aboutWindowController = AboutWindowController(updaterController: updaterController)
@@ -52,7 +54,7 @@ final class StatusBarController: NSObject {
         menu.autoenablesItems = false
         menu.delegate = self
 
-        let menuView = VesilaMenuView(state: controller.state, now: .now) { [weak self] action in
+        let menuView = VesilaMenuView(state: controller.state, now: .now, loginItemStatus: loginItemController.status) { [weak self] action in
             self?.handle(action)
         }
         let contentItem = NSMenuItem()
@@ -82,6 +84,12 @@ final class StatusBarController: NSObject {
             controller.setStayActiveWhenLocked(isOn)
         case .selectDuration(let duration):
             controller.selectDuration(duration)
+        case .setStartOnLaunch(let isOn):
+            let result = loginItemController.setEnabled(isOn)
+            openMenuView?.renderLoginItemStatus(result.status)
+            if result.status == .requiresApproval || result.status == .notFound || result.error != nil {
+                explainLoginItemResult(result)
+            }
         case .showAbout:
             openMenu?.cancelTracking()
             aboutWindowController.show()
@@ -94,6 +102,26 @@ final class StatusBarController: NSObject {
     private func render(_ state: VesilaState) {
         statusItem.button?.image = VesilaIconLibrary.statusImage(for: state.activeFeatures)
         openMenuView?.render(state, now: .now)
+    }
+
+    private func explainLoginItemResult(_ result: LoginItemController.Result) {
+        openMenu?.cancelTracking()
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        if result.status == .requiresApproval {
+            alert.messageText = "Start on Launch Requires Approval"
+            alert.informativeText = "Allow Vesila in System Settings > General > Login Items to launch automatically when you sign in. Start on Launch will remain off until macOS reports it as enabled."
+            alert.addButton(withTitle: "Open Login Items Settings")
+            alert.addButton(withTitle: "Cancel")
+            if alert.runModal() == .alertFirstButtonReturn {
+                SMAppService.openSystemSettingsLoginItems()
+            }
+        } else {
+            alert.messageText = "Could Not Change Start on Launch"
+            alert.informativeText = result.error?.localizedDescription ?? "macOS could not update Vesila's login item."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
     }
 
     private func explainAccessibilityRequirement() {

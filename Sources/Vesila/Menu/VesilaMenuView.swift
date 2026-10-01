@@ -9,6 +9,7 @@ final class VesilaMenuView: NSView {
         case setSystemAwake(Bool)
         case setStayActiveWhenLocked(Bool)
         case selectDuration(VesilaDuration)
+        case setStartOnLaunch(Bool)
         case showAbout
         case quit
     }
@@ -18,13 +19,15 @@ final class VesilaMenuView: NSView {
     private let systemAwakeCard: FeatureCardView
     private let stayActiveRow: StayActiveWhenLockedRowView
     private let durationPicker: ActiveForView
+    private let startOnLaunchRow: StartOnLaunchRowView
     private let content = NSStackView()
 
-    init(state: VesilaState, now: Date, onAction: @escaping (Action) -> Void) {
+    init(state: VesilaState, now: Date, loginItemStatus: LoginItemStatus, onAction: @escaping (Action) -> Void) {
         presenceCard = FeatureCardView(title: "Presence") { onAction(.setPresence($0)) }
         systemAwakeCard = FeatureCardView(title: "System Awake") { onAction(.setSystemAwake($0)) }
         stayActiveRow = StayActiveWhenLockedRowView { onAction(.setStayActiveWhenLocked($0)) }
         durationPicker = ActiveForView { onAction(.selectDuration($0)) }
+        startOnLaunchRow = StartOnLaunchRowView { onAction(.setStartOnLaunch($0)) }
         super.init(frame: NSRect(x: 0, y: 0, width: MenuStyle.width, height: 1))
 
         let features = NSStackView(views: [presenceCard, systemAwakeCard])
@@ -38,13 +41,13 @@ final class VesilaMenuView: NSView {
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = MenuStyle.gap
-        for view in [statusCard, features, stayActiveRow, durationPicker, separator, footer] {
+        for view in [statusCard, features, stayActiveRow, durationPicker, startOnLaunchRow, separator, footer] {
             content.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         }
         content.setCustomSpacing(MenuStyle.childGap, after: features)
         content.setCustomSpacing(MenuStyle.sectionGap, after: stayActiveRow)
-        content.setCustomSpacing(MenuStyle.sectionGap, after: durationPicker)
+        content.setCustomSpacing(MenuStyle.sectionGap, after: startOnLaunchRow)
         content.setCustomSpacing(MenuStyle.smallGap, after: separator)
         content.translatesAutoresizingMaskIntoConstraints = false
         addSubview(content)
@@ -54,6 +57,7 @@ final class VesilaMenuView: NSView {
             content.widthAnchor.constraint(equalToConstant: MenuStyle.width - 2 * MenuStyle.inset)
         ])
 
+        startOnLaunchRow.update(status: loginItemStatus)
         render(state, now: now)
     }
 
@@ -69,6 +73,10 @@ final class VesilaMenuView: NSView {
         stayActiveRow.update(isOn: state.preferences.stayActiveWhenLocked)
         durationPicker.update(selected: state.preferences.duration)
         resizeToFitContent()
+    }
+
+    func renderLoginItemStatus(_ status: LoginItemStatus) {
+        startOnLaunchRow.update(status: status)
     }
 
     /// Cheap per-second update while the menu is open: only the countdown text changes.
