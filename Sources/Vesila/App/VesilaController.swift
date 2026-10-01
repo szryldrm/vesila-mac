@@ -83,7 +83,13 @@ final class VesilaController {
 
     /// Right-click: turn everything off, or restore the last combination that was on.
     func quickToggle() {
-        guard !state.isSessionActive else {
+        setVesilaActive(!state.isSessionActive)
+    }
+
+    /// Master switch: restore the last combination or end the session, leaving preferences alone.
+    func setVesilaActive(_ isOn: Bool) {
+        guard isOn != state.isSessionActive else { return }
+        guard isOn else {
             turnOff()
             return
         }
@@ -97,6 +103,8 @@ final class VesilaController {
         }
         if presenceNeedsAccess {
             onAccessibilityRequired?()
+            // A Presence-only restore leaves the session off; reset the clicked master switch.
+            onChange?(state)
         }
     }
 

@@ -276,6 +276,118 @@ struct SystemIntegrationTests {
         }
     }
 
+    @Test(arguments: [MainFeatures.both, MainFeatures(presence: true, systemAwake: false), MainFeatures(presence: false, systemAwake: true)], VesilaDuration.allCases)
+    func masterSwitchRestoresCombinationAndSelectedDuration(features: MainFeatures, duration: VesilaDuration) throws {
+        try withTemporaryDefaults { defaults in
+            let preferences = VesilaPreferences(stayActiveWhenLocked: true, duration: duration, lastActiveFeatures: features)
+            PreferencesStore(defaults: defaults).save(preferences)
+            let controller = makeController(defaults: defaults, accessibilityGranted: { true })
+            defer { controller.shutdown() }
+            let before = Date.now
+
+            controller.setVesilaActive(true)
+            #expect(controller.state.activeFeatures == features)
+            #expect(controller.state.preferences == preferences)
+            if let seconds = duration.seconds {
+                let expiration = try #require(controller.state.expirationDate)
+                let timer = try #require(controller.expirationTimer)
+                #expect(expiration >= before.addingTimeInterval(seconds))
+                #expect(expiration <= Date.now.addingTimeInterval(seconds))
+                #expect(timer.isValid)
+                #expect(abs(timer.fireDate.timeIntervalSince(expiration)) < 1)
+            } else {
+                #expect(controller.state.expirationDate == nil)
+                #expect(controller.expirationTimer == nil)
+            }
+        }
+    }
+
+    @Test func masterSwitchOffClearsSessionAndKeepsPreferences() throws {
+        try withTemporaryDefaults { defaults in
+            let controller = makeController(defaults: defaults, accessibilityGranted: { true })
+            defer { controller.shutdown() }
+            controller.setStayActiveWhenLocked(true)
+            controller.selectDuration(.twoHours)
+            controller.setVesilaActive(true)
+            let preferences = controller.state.preferences
+            let timer = try #require(controller.expirationTimer)
+
+            controller.setVesilaActive(false)
+            #expect(controller.state.activeFeatures == .none)
+            #expect(controller.state.expirationDate == nil)
+            #expect(controller.expirationTimer == nil)
+            #expect(!timer.isValid)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
+            #expect(controller.state.preferences == preferences)
+            #expect(PreferencesStore(defaults: defaults).load() == preferences)
+            #expect(VesilaFormatter.statusLine(for: controller.state, at: .now) == "Inactive")
+        }
+    }
+
+    @Test(arguments: [MainFeatures.both, MainFeatures(presence: true, systemAwake: false)])
+    func masterSwitchWithoutAccessibilityRestoresWhatItCanAndRendersActualState(features: MainFeatures) {
+        withTemporaryDefaults { defaults in
+            PreferencesStore(defaults: defaults).save(VesilaPreferences(lastActiveFeatures: features))
+            let controller = makeController(defaults: defaults)
+            defer { controller.shutdown() }
+            var prompts = 0
+            var renderedState: VesilaState?
+            controller.onAccessibilityRequired = { prompts += 1 }
+            controller.onChange = { renderedState = $0 }
+
+            controller.setVesilaActive(true)
+            #expect(controller.state.activeFeatures == MainFeatures(presence: false, systemAwake: features.systemAwake))
+            #expect(controller.state.isSessionActive == features.systemAwake)
+            #expect(prompts == 1)
+            #expect(renderedState == controller.state, "the clicked switch reflects the actual session")
+            if !features.systemAwake {
+                #expect(controller.state.expirationDate == nil)
+                #expect(controller.expirationTimer == nil)
+                #expect(controller.state.preferences.lastActiveFeatures == features)
+            }
+        }
+    }
+
+    @Test func masterSwitchMatchingStateDoesNothing() {
+        withTemporaryDefaults { defaults in
+            let controller = makeController(defaults: defaults, accessibilityGranted: { true })
+            defer { controller.shutdown() }
+            var renders = 0
+            var prompts = 0
+            controller.onChange = { _ in renders += 1 }
+            controller.onAccessibilityRequired = { prompts += 1 }
+            let inactiveState = controller.state
+            controller.setVesilaActive(false)
+            #expect(controller.state == inactiveState)
+            #expect(renders == 0)
+
+            controller.setVesilaActive(true)
+            let activeState = controller.state
+            let timer = controller.expirationTimer
+            controller.setVesilaActive(true)
+            #expect(controller.state == activeState)
+            #expect(controller.expirationTimer === timer)
+            #expect(renders == 1)
+            #expect(prompts == 0)
+        }
+    }
+
+    @Test func masterSwitchOffCancelsPendingPresenceActivation() {
+        withTemporaryDefaults { defaults in
+            var granted = false
+            let controller = makeController(defaults: defaults, accessibilityGranted: { granted })
+            defer { controller.shutdown() }
+            controller.setSystemAwakeActive(true)
+            controller.activatePresenceWhenAccessibilityGranted()
+
+            controller.setVesilaActive(false)
+            granted = true
+            RunLoop.main.run(until: .now + 1.5)
+            #expect(!controller.state.isSessionActive)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
+        }
+    }
+
     @Test func rightClickTurnsOffAndRestoresTheLastCombination() {
         withTemporaryDefaults { defaults in
             let controller = makeController(defaults: defaults, accessibilityGranted: { true })

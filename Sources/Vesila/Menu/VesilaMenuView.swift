@@ -5,6 +5,7 @@ import AppKit
 /// as `Action`s and never changes state itself.
 final class VesilaMenuView: NSView {
     enum Action {
+        case setVesilaActive(Bool)
         case setPresence(Bool)
         case setSystemAwake(Bool)
         case setStayActiveWhenLocked(Bool)
@@ -14,7 +15,7 @@ final class VesilaMenuView: NSView {
         case quit
     }
 
-    private let statusCard = GlobalStatusCardView()
+    private let statusCard: GlobalStatusCardView
     private let presenceCard: FeatureCardView
     private let systemAwakeCard: FeatureCardView
     private let stayActiveRow: StayActiveWhenLockedRowView
@@ -23,6 +24,7 @@ final class VesilaMenuView: NSView {
     private let content = NSStackView()
 
     init(state: VesilaState, now: Date, loginItemStatus: LoginItemStatus, onAction: @escaping (Action) -> Void) {
+        statusCard = GlobalStatusCardView { onAction(.setVesilaActive($0)) }
         presenceCard = FeatureCardView(title: "Presence") { onAction(.setPresence($0)) }
         systemAwakeCard = FeatureCardView(title: "System Awake") { onAction(.setSystemAwake($0)) }
         stayActiveRow = StayActiveWhenLockedRowView { onAction(.setStayActiveWhenLocked($0)) }
@@ -67,7 +69,7 @@ final class VesilaMenuView: NSView {
     }
 
     func render(_ state: VesilaState, now: Date) {
-        statusCard.update(features: state.activeFeatures, statusLine: VesilaFormatter.statusLine(for: state, at: now))
+        statusCard.update(features: state.activeFeatures, statusLine: VesilaFormatter.statusLine(for: state, at: now), isOn: state.isSessionActive)
         presenceCard.update(isOn: state.activeFeatures.presence)
         systemAwakeCard.update(isOn: state.activeFeatures.systemAwake)
         stayActiveRow.update(

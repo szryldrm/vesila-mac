@@ -2,12 +2,18 @@ import AppKit
 
 /// Top card: app name plus one shared status line, tinted by which main features are on.
 final class GlobalStatusCardView: MenuSurfaceView {
+    private let toggle = VesilaToggleControl()
+    private let onToggle: (Bool) -> Void
     private let iconView = NSImageView()
     private let titleLabel = NSTextField(labelWithString: VesilaConfig.appName)
     private let statusLabel = NSTextField(labelWithString: "")
 
-    init() {
+    init(onToggle: @escaping (Bool) -> Void) {
+        self.onToggle = onToggle
         super.init()
+        toggle.target = self
+        toggle.action = #selector(toggled)
+        toggle.setAccessibilityLabel("Vesila")
         titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
         titleLabel.textColor = .labelColor
         statusLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -20,7 +26,7 @@ final class GlobalStatusCardView: MenuSurfaceView {
         labels.alignment = .leading
         labels.spacing = MenuStyle.smallGap
         labels.setHuggingPriority(.required, for: .vertical)
-        let content = NSStackView(views: [iconView, labels])
+        let content = NSStackView(views: [iconView, labels, NSView(), toggle])
         content.orientation = .horizontal
         content.alignment = .centerY
         content.spacing = MenuStyle.padding
@@ -37,7 +43,10 @@ final class GlobalStatusCardView: MenuSurfaceView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func update(features: MainFeatures, statusLine: String) {
+    @objc private func toggled() { onToggle(toggle.isOn) }
+
+    func update(features: MainFeatures, statusLine: String, isOn: Bool) {
+        toggle.isOn = isOn
         fillColor = CardColor.statusFill(for: features)
         iconView.image = VesilaIconLibrary.statusImage(for: features)
         iconView.contentTintColor = CardColor.statusTint(for: features) ?? .secondaryLabelColor
