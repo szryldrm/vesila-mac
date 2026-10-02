@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.0.6",
+    "notes": [
+      "Added Scheduled activation mode with configurable weekdays and start/end times directly in the menu bar.",
+      "Vesila now automatically evaluates your schedule when the app launches and when your Mac wakes or resumes.",
+      "Manual changes during a scheduled window now apply only to the current window, so the next scheduled window starts fresh."
+    ]
+  },
+  {
     "version": "1.0.5",
     "notes": [
       "Added a global Vesila activation toggle for easier control.",
