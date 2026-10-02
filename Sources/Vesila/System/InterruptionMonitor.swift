@@ -60,7 +60,7 @@ final class InterruptionMonitor: NSObject {
 
     /// Seed at launch and refresh on wake, before a potentially delayed lock notification.
     /// Missing session data is treated as unavailable, so a boundary cannot activate on a lock screen.
-    static func sessionSnapshot() -> (locked: Bool, active: Bool) {
+    nonisolated static func sessionSnapshot() -> (locked: Bool, active: Bool) {
         guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return (true, false) }
         return (session["CGSSessionScreenIsLocked"] as? Bool ?? false,
                 session[kCGSessionOnConsoleKey as String] as? Bool ?? false)
