@@ -26,9 +26,9 @@ final class VesilaMenuView: NSView {
 
     init(state: VesilaState, now: Date, loginItemStatus: LoginItemStatus, onAction: @escaping (Action) -> Void) {
         statusCard = GlobalStatusCardView()
-        presenceCard = StateCardView(title: "Presence", symbol: "person", height: 88, requirement: "Requires System Awake") { onAction(.setPresence($0)) }
+        presenceCard = StateCardView(title: "Presence", symbol: "person", layout: .compact, requirement: "Requires System Awake") { onAction(.setPresence($0)) }
         systemAwakeCard = StateCardView(title: "System Awake", symbol: "sun.max") { onAction(.setSystemAwake($0)) }
-        stayActiveRow = StateCardView(title: "Stay Active When Locked", symbol: "lock", height: 88, requirement: "Requires System Awake") { onAction(.setStayActiveWhenLocked($0)) }
+        stayActiveRow = StateCardView(title: "Stay Active When Locked", symbol: "lock", layout: .compact, requirement: "Requires System Awake") { onAction(.setStayActiveWhenLocked($0)) }
         activationPicker = ActivationView(onMode: { onAction(.selectActivationMode($0)) },
                                           onDuration: { onAction(.selectDuration($0)) },
                                           onSchedule: { onAction(.setSchedule($0)) })
@@ -37,7 +37,11 @@ final class VesilaMenuView: NSView {
 
         let features = NSStackView(views: [presenceCard, stayActiveRow])
         features.orientation = .horizontal
-        features.distribution = .fillEqually
+        features.distribution = .fill
+        features.alignment = .centerY
+        // Keep Presence at its natural width and give the longer label the remaining space.
+        presenceCard.setContentHuggingPriority(.required, for: .horizontal)
+        presenceCard.setContentCompressionResistancePriority(.required, for: .horizontal)
         features.spacing = MenuStyle.childGap
         let separator = NSBox()
         separator.boxType = .separator

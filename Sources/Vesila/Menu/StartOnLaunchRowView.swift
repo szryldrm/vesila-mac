@@ -3,7 +3,7 @@ import AppKit
 /// Login item status and help remain owned by LoginItemController.
 final class StartOnLaunchRowView: StateCardView {
     init(onToggle: @escaping (Bool) -> Void) {
-        super.init(title: "Start on Launch", symbol: "power", height: 66, onToggle: onToggle)
+        super.init(title: "Start on Launch", symbol: "power", layout: .compact, onToggle: onToggle)
     }
 
     @available(*, unavailable)

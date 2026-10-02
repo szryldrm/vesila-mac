@@ -4,6 +4,12 @@ import AppKit
 /// System switch rendering can cache the wrong appearance before menu window attachment;
 /// this control resolves its own colors, like MenuSurfaceView, instead of using a bezel.
 class StateCardView: MenuSurfaceView {
+    enum Layout {
+        case prominent
+        case compact
+    }
+
+    private let cardLayout: Layout
     private let titleLabel: NSTextField
     private let icon = NSImageView()
     private let hoverLayer = CALayer()
@@ -14,29 +20,45 @@ class StateCardView: MenuSurfaceView {
     private(set) var isOn = false
     private(set) var isEnabled = true
 
-    init(title: String, symbol: String, height: CGFloat = 76, requirement: String? = nil,
+    init(title: String, symbol: String, layout: Layout = .prominent, requirement: String? = nil,
          onToggle: @escaping (Bool) -> Void) {
+        cardLayout = layout
         titleLabel = NSTextField(labelWithString: title)
         self.onToggle = onToggle
         self.requirement = requirement
         super.init()
-        titleLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        titleLabel.maximumNumberOfLines = 2
-        titleLabel.lineBreakMode = .byWordWrapping
+        let isCompact = layout == .compact
+        titleLabel.font = .systemFont(ofSize: isCompact ? 11.5 : 12, weight: .medium)
+        titleLabel.maximumNumberOfLines = isCompact ? 1 : 2
+        titleLabel.lineBreakMode = isCompact ? .byClipping : .byWordWrapping
+        if isCompact {
+            titleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
         titleLabel.setAccessibilityElement(false)
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         icon.setAccessibilityElement(false)
         let content = NSStackView(views: [icon, titleLabel])
-        content.orientation = .vertical
-        content.alignment = .leading
-        content.spacing = MenuStyle.childGap
-        MenuStyle.pin(content, to: self, inset: MenuStyle.padding)
+        content.orientation = isCompact ? .horizontal : .vertical
+        content.alignment = isCompact ? .centerY : .leading
+        content.spacing = isCompact ? MenuStyle.smallGap : MenuStyle.childGap
+        let iconSize: CGFloat = isCompact ? 14 : 16
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: height),
-            icon.widthAnchor.constraint(equalToConstant: 16),
-            icon.heightAnchor.constraint(equalToConstant: 16),
-            titleLabel.widthAnchor.constraint(equalTo: content.widthAnchor)
+            heightAnchor.constraint(equalToConstant: isCompact ? 38 : 76),
+            icon.widthAnchor.constraint(equalToConstant: iconSize),
+            icon.heightAnchor.constraint(equalToConstant: iconSize)
         ])
+        if isCompact {
+            content.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(content)
+            NSLayoutConstraint.activate([
+                content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MenuStyle.gap),
+                content.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -MenuStyle.gap),
+                content.centerYAnchor.constraint(equalTo: centerYAnchor)
+            ])
+        } else {
+            MenuStyle.pin(content, to: self, inset: MenuStyle.padding)
+            titleLabel.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+        }
         layer?.addSublayer(hoverLayer)
         addHoverTrackingArea()
         update(isOn: false)
@@ -44,6 +66,13 @@ class StateCardView: MenuSurfaceView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var intrinsicContentSize: NSSize {
+        guard cardLayout == .compact else { return super.intrinsicContentSize }
+        // Reserve the complete label, icon, gap, and both horizontal insets.
+        return NSSize(width: titleLabel.intrinsicContentSize.width + 14 + MenuStyle.smallGap + 2 * MenuStyle.gap,
+                      height: 38)
+    }
 
     func update(isOn: Bool, isEnabled: Bool = true) {
         self.isOn = isOn && isEnabled

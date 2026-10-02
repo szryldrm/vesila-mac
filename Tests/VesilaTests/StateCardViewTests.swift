@@ -12,10 +12,10 @@ struct StateCardViewTests {
                                      isARepeat: false, keyCode: 0))
     }
 
-    @Test(arguments: [true, false])
-    func disabledRejectsEveryActivationAndExposesRequirement(storedChoice: Bool) throws {
+    @Test(arguments: [true, false], [StateCardView.Layout.prominent, .compact])
+    func disabledRejectsEveryActivationAndExposesRequirement(storedChoice: Bool, layout: StateCardView.Layout) throws {
         var changes: [Bool] = []
-        let card = StateCardView(title: "Presence", symbol: "person", requirement: "Requires System Awake") {
+        let card = StateCardView(title: "Presence", symbol: "person", layout: layout, requirement: "Requires System Awake") {
             changes.append($0)
         }
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 160, height: 100),
@@ -47,9 +47,10 @@ struct StateCardViewTests {
         #expect(card.layer?.sublayers?.last?.opacity == 0)
     }
 
-    @Test func enabledTogglesAndKeepsHeightAndAccessibleState() throws {
+    @Test(arguments: [StateCardView.Layout.prominent, .compact])
+    func enabledTogglesAndKeepsHeightAndAccessibleState(layout: StateCardView.Layout) throws {
         var changes: [Bool] = []
-        let card = StateCardView(title: "System Awake", symbol: "sun.max") { changes.append($0) }
+        let card = StateCardView(title: "System Awake", symbol: "sun.max", layout: layout) { changes.append($0) }
         card.update(isOn: false, isEnabled: false)
         let height = card.fittingSize.height
         card.update(isOn: false)
@@ -67,13 +68,14 @@ struct StateCardViewTests {
         card.keyDown(with: try key(" "))
         card.keyDown(with: try key("\r"))
         #expect(changes == [true, false, true])
-        #expect(height == 76)
+        #expect(height == (layout == .compact ? 38 : 76))
         #expect(card.fittingSize.height == height)
     }
 
-    @Test func mouseUpInsideCommitsAndOutsideCancels() throws {
+    @Test(arguments: [StateCardView.Layout.prominent, .compact])
+    func mouseUpInsideCommitsAndOutsideCancels(layout: StateCardView.Layout) throws {
         var changes: [Bool] = []
-        let card = StateCardView(title: "Presence", symbol: "person") { changes.append($0) }
+        let card = StateCardView(title: "Presence", symbol: "person", layout: layout) { changes.append($0) }
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 160, height: 100),
                               styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = card
@@ -92,8 +94,56 @@ struct StateCardViewTests {
         #expect(changes == [true])
     }
 
+    private func expectHorizontalContent(_ card: StateCardView) throws {
+        let content = try #require(card.subviews.compactMap { $0 as? NSStackView }.first)
+        let icon = try #require(content.arrangedSubviews.first as? NSImageView)
+        let title = try #require(content.arrangedSubviews.last as? NSTextField)
+        let iconFrame = card.convert(icon.bounds, from: icon)
+        let titleFrame = card.convert(title.bounds, from: title)
+        #expect(content.orientation == .horizontal)
+        #expect(title.maximumNumberOfLines == 1)
+        #expect(iconFrame.maxX < titleFrame.minX)
+        #expect(abs(iconFrame.midY - titleFrame.midY) < 0.5)
+        #expect(abs(iconFrame.midY - card.bounds.midY) < 0.5)
+        #expect(title.fittingSize.width <= title.frame.width + 0.5)
+        #expect(titleFrame.maxX <= card.bounds.maxX - MenuStyle.gap + 0.5)
+        #expect(card.frame.height == 38)
+        #expect(card.fittingSize.height == 38)
+    }
+
+    @Test func menuFitsCompactCardsAtPopoverWidth() throws {
+        let menu = VesilaMenuView(state: VesilaState(), now: .now,
+                                  loginItemStatus: .notRegistered) { _ in }
+        let window = NSWindow(contentRect: menu.frame, styleMask: .borderless,
+                              backing: .buffered, defer: false)
+        window.contentView = menu
+        menu.layoutSubtreeIfNeeded()
+        func cards(in view: NSView) -> [StateCardView] {
+            if let card = view as? StateCardView { return [card] }
+            return view.subviews.flatMap { cards(in: $0) }
+        }
+        let allCards = cards(in: menu)
+        let presence = try #require(allCards.first { $0.accessibilityLabel() == "Presence" })
+        let locked = try #require(allCards.first { $0.accessibilityLabel() == "Stay Active When Locked" })
+        let launch = try #require(allCards.first { $0.accessibilityLabel() == "Start on Launch" })
+        let awake = try #require(allCards.first { $0.accessibilityLabel() == "System Awake" })
+        #expect(menu.frame.width == MenuStyle.width)
+        #expect(presence.frame.height == locked.frame.height)
+        #expect(locked.frame.width >= presence.frame.width)
+        let presenceFrame = menu.convert(presence.bounds, from: presence)
+        let lockedFrame = menu.convert(locked.bounds, from: locked)
+        #expect(abs(presenceFrame.midY - lockedFrame.midY) < 0.5)
+        #expect(abs(lockedFrame.minX - presenceFrame.maxX - MenuStyle.childGap) < 0.5)
+        #expect(abs(presence.frame.width + locked.frame.width - 270) < 0.5)
+        #expect(awake.frame.height == 76)
+        for card in [presence, locked, launch] {
+            try expectHorizontalContent(card)
+        }
+    }
+
     @Test func launchCardPreservesApprovalHelp() {
         let card = StartOnLaunchRowView { _ in }
+        #expect(card.fittingSize.height == 38)
         card.update(status: .requiresApproval)
         #expect(card.toolTip == "Approval required in System Settings > General > Login Items.")
         #expect(card.accessibilityHelp() == card.toolTip)
