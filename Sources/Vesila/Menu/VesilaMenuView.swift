@@ -9,6 +9,8 @@ final class VesilaMenuView: NSView {
         case setPresence(Bool)
         case setSystemAwake(Bool)
         case setStayActiveWhenLocked(Bool)
+        case selectActivationMode(VesilaActivationMode)
+        case setSchedule(VesilaSchedule)
         case selectDuration(VesilaDuration)
         case setStartOnLaunch(Bool)
         case showAbout
@@ -19,7 +21,7 @@ final class VesilaMenuView: NSView {
     private let presenceCard: FeatureCardView
     private let systemAwakeCard: FeatureCardView
     private let stayActiveRow: StayActiveWhenLockedRowView
-    private let durationPicker: ActiveForView
+    private let activationPicker: ActivationView
     private let startOnLaunchRow: StartOnLaunchRowView
     private let content = NSStackView()
 
@@ -28,7 +30,9 @@ final class VesilaMenuView: NSView {
         presenceCard = FeatureCardView(title: "Presence") { onAction(.setPresence($0)) }
         systemAwakeCard = FeatureCardView(title: "System Awake") { onAction(.setSystemAwake($0)) }
         stayActiveRow = StayActiveWhenLockedRowView { onAction(.setStayActiveWhenLocked($0)) }
-        durationPicker = ActiveForView { onAction(.selectDuration($0)) }
+        activationPicker = ActivationView(onMode: { onAction(.selectActivationMode($0)) },
+                                          onDuration: { onAction(.selectDuration($0)) },
+                                          onSchedule: { onAction(.setSchedule($0)) })
         startOnLaunchRow = StartOnLaunchRowView { onAction(.setStartOnLaunch($0)) }
         super.init(frame: NSRect(x: 0, y: 0, width: MenuStyle.width, height: 1))
 
@@ -43,7 +47,7 @@ final class VesilaMenuView: NSView {
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = MenuStyle.gap
-        for view in [statusCard, features, stayActiveRow, durationPicker, startOnLaunchRow, separator, footer] {
+        for view in [statusCard, features, stayActiveRow, activationPicker, startOnLaunchRow, separator, footer] {
             content.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         }
@@ -76,7 +80,7 @@ final class VesilaMenuView: NSView {
             isOn: state.preferences.stayActiveWhenLocked,
             isAvailable: state.isStayActiveWhenLockedAvailable
         )
-        durationPicker.update(selected: state.preferences.duration)
+        activationPicker.update(preferences: state.preferences)
         resizeToFitContent()
     }
 
@@ -86,7 +90,7 @@ final class VesilaMenuView: NSView {
 
     /// Cheap per-second update while the menu is open: only the countdown text changes.
     func refreshCountdown(_ state: VesilaState, now: Date) {
-        guard state.remainingTime(at: now) != nil else { return }
+        guard state.remainingTime(at: now) != nil || state.preferences.activationMode == .scheduled else { return }
         statusCard.setStatusLine(VesilaFormatter.statusLine(for: state, at: now))
     }
 

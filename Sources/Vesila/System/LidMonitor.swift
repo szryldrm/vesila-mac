@@ -3,7 +3,7 @@ import IOKit
 import IOKit.pwr_mgt
 import OSLog
 
-/// Watches IOPMrootDomain's clamshell state and reports when the laptop lid closes.
+/// Watches IOPMrootDomain's clamshell state and reports both close and open edges of the laptop lid.
 /// This is the only signal for a lid closing while an external display keeps the Mac awake.
 ///
 /// Use from the main thread; notifications are delivered on the main queue. Not main-actor
@@ -14,9 +14,10 @@ final class LidMonitor {
     private var notificationPort: IONotificationPortRef?
     private var interestNotification: io_object_t = IO_OBJECT_NULL
     private var lidWasClosed = false
+    private var onLidOpened: (@MainActor @Sendable () -> Void)?
     private var onLidClosed: (@MainActor @Sendable () -> Void)?
 
-    func start(onLidClosed: @escaping @MainActor @Sendable () -> Void) {
+    func start(onLidClosed: @escaping @MainActor @Sendable () -> Void, onLidOpened: @escaping @MainActor @Sendable () -> Void = {}) {
         guard rootDomain == IO_OBJECT_NULL else { return }
 
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
@@ -39,6 +40,7 @@ final class LidMonitor {
         notificationPort = port
         lidWasClosed = isClosed
         self.onLidClosed = onLidClosed
+        self.onLidOpened = onLidOpened
         IONotificationPortSetDispatchQueue(port, .main)
 
         let context = Unmanaged.passUnretained(self).toOpaque()
@@ -74,6 +76,7 @@ final class LidMonitor {
             rootDomain = IO_OBJECT_NULL
         }
         onLidClosed = nil
+        onLidOpened = nil
     }
 
     deinit {
@@ -84,10 +87,10 @@ final class LidMonitor {
         guard rootDomain != IO_OBJECT_NULL, let isClosed = Self.isLidClosed(rootDomain) else { return }
         let wasClosed = lidWasClosed
         lidWasClosed = isClosed
-        guard isClosed, !wasClosed, let onLidClosed else { return }
+        guard isClosed != wasClosed else { return }
         // The notification port delivers on the main queue (see `start`).
         MainActor.assumeIsolated {
-            onLidClosed()
+            if isClosed { onLidClosed?() } else { onLidOpened?() }
         }
     }
 

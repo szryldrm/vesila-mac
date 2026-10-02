@@ -6,6 +6,11 @@ import Foundation
 /// always starts off rather than inheriting an unrelated setting. There is no migration.
 struct PreferencesStore {
     private enum Key {
+        static let activationMode = "activationMode"
+        static let scheduleDays = "schedule.days"
+        static let scheduleStart = "schedule.startMinute"
+        static let scheduleEnd = "schedule.endMinute"
+        static let pausedWindowDay = "schedule.pausedWindowDay"
         static let duration = "selectedDuration"
         static let stayActiveWhenLocked = "stayActiveWhenLocked"
         static let hasLastActiveFeatures = "lastEnabledConfiguration.hasValue"
@@ -39,10 +44,29 @@ struct PreferencesStore {
                 preferences.lastActiveFeatures = features
             }
         }
+        if let rawMode = defaults.string(forKey: Key.activationMode), let mode = VesilaActivationMode(rawValue: rawMode) {
+            preferences.activationMode = mode
+        }
+        if let days = defaults.object(forKey: Key.scheduleDays) as? [Int],
+           let start = defaults.object(forKey: Key.scheduleStart) as? Int,
+           let end = defaults.object(forKey: Key.scheduleEnd) as? Int {
+            let schedule = VesilaSchedule(days: Set(days), startMinute: start, endMinute: end)
+            if schedule.isValid { preferences.schedule = schedule }
+        }
+        preferences.pausedWindowDay = defaults.object(forKey: Key.pausedWindowDay) as? Date
         return preferences
     }
 
     func save(_ preferences: VesilaPreferences) {
+        defaults.set(preferences.activationMode.rawValue, forKey: Key.activationMode)
+        defaults.set(preferences.schedule.days.sorted(), forKey: Key.scheduleDays)
+        defaults.set(preferences.schedule.startMinute, forKey: Key.scheduleStart)
+        defaults.set(preferences.schedule.endMinute, forKey: Key.scheduleEnd)
+        if let day = preferences.pausedWindowDay {
+            defaults.set(day, forKey: Key.pausedWindowDay)
+        } else {
+            defaults.removeObject(forKey: Key.pausedWindowDay)
+        }
         defaults.set(preferences.duration.rawValue, forKey: Key.duration)
         defaults.set(preferences.stayActiveWhenLocked, forKey: Key.stayActiveWhenLocked)
         defaults.set(true, forKey: Key.hasLastActiveFeatures)

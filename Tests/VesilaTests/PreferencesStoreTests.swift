@@ -100,4 +100,64 @@ struct PreferencesStoreTests {
             #expect(store.isOnboardingCompleted)
         }
     }
+    @Test func scheduledPreferencesAndPauseRoundTripAndClear() {
+        withTemporaryDefaults { defaults in
+            let store = PreferencesStore(defaults: defaults)
+            let preferences = VesilaPreferences(
+                activationMode: .scheduled,
+                schedule: VesilaSchedule(days: [1, 3, 7], startMinute: 480, endMinute: 1020),
+                pausedWindowDay: scheduleCalendar.startOfDay(for: scheduleDate(hour: 10))
+            )
+            store.save(preferences)
+            #expect(store.load() == preferences)
+            #expect(defaults.string(forKey: "activationMode") == "scheduled")
+            #expect(defaults.array(forKey: "schedule.days") as? [Int] == [1, 3, 7])
+            #expect(defaults.integer(forKey: "schedule.startMinute") == 480)
+            #expect(defaults.integer(forKey: "schedule.endMinute") == 1020)
+            var cleared = preferences
+            cleared.pausedWindowDay = nil
+            store.save(cleared)
+            #expect(store.load() == cleared)
+            #expect(defaults.object(forKey: "schedule.pausedWindowDay") == nil)
+        }
+    }
+
+    @Test func missingScheduleKeysDefaultToManualWeekdays() {
+        withTemporaryDefaults { defaults in
+            let preferences = PreferencesStore(defaults: defaults).load()
+            #expect(preferences.activationMode == .manual)
+            #expect(preferences.schedule == VesilaSchedule())
+            #expect(preferences.pausedWindowDay == nil)
+        }
+    }
+
+    @Test(arguments: [
+        VesilaSchedule(days: []), VesilaSchedule(days: [0, 8]),
+        VesilaSchedule(startMinute: -1), VesilaSchedule(endMinute: 1440),
+        VesilaSchedule(startMinute: 1080, endMinute: 540)
+    ])
+    func corruptSchedulesFallBackAsAWhole(schedule: VesilaSchedule) {
+        withTemporaryDefaults { defaults in
+            defaults.set("unknown", forKey: "activationMode")
+            defaults.set(schedule.days.sorted(), forKey: "schedule.days")
+            defaults.set(schedule.startMinute, forKey: "schedule.startMinute")
+            defaults.set(schedule.endMinute, forKey: "schedule.endMinute")
+            defaults.set("not a date", forKey: "schedule.pausedWindowDay")
+            #expect(PreferencesStore(defaults: defaults).load() == VesilaPreferences())
+        }
+    }
+
+    @Test func wrongTypesAndPartiallyMissingScheduleFallBack() {
+        withTemporaryDefaults { defaults in
+            defaults.set([2, 3], forKey: "schedule.days")
+            defaults.set(480, forKey: "schedule.startMinute")
+            #expect(PreferencesStore(defaults: defaults).load().schedule == VesilaSchedule())
+            defaults.set("evening", forKey: "schedule.endMinute")
+            #expect(PreferencesStore(defaults: defaults).load().schedule == VesilaSchedule())
+            defaults.set(["Monday"], forKey: "schedule.days")
+            defaults.set(1020, forKey: "schedule.endMinute")
+            #expect(PreferencesStore(defaults: defaults).load().schedule == VesilaSchedule())
+        }
+    }
+
 }

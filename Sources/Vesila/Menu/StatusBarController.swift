@@ -84,6 +84,10 @@ final class StatusBarController: NSObject {
             controller.setSystemAwakeActive(isOn)
         case .setStayActiveWhenLocked(let isOn):
             controller.setStayActiveWhenLocked(isOn)
+        case .selectActivationMode(let mode):
+            controller.selectActivationMode(mode)
+        case .setSchedule(let schedule):
+            controller.setSchedule(schedule)
         case .selectDuration(let duration):
             controller.selectDuration(duration)
         case .setStartOnLaunch(let isOn):
