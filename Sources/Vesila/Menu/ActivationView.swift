@@ -1,19 +1,16 @@
 import AppKit
 
-/// Activation mode pills, with the existing durations or a compact schedule summary.
+/// Activation mode pills, with the existing durations or inline schedule controls.
 final class ActivationView: NSView {
     private var pills: [VesilaActivationMode: MenuActionButton] = [:]
     private let durations: ActiveForView
-    private let scheduledContent: NSStackView
-    private let summary = NSTextField(labelWithString: "")
+    private let scheduledContent: ScheduleControlsView
 
     init(onMode: @escaping (VesilaActivationMode) -> Void,
-         onDuration: @escaping (VesilaDuration) -> Void, onEdit: @escaping () -> Void) {
+         onDuration: @escaping (VesilaDuration) -> Void,
+         onSchedule: @escaping (VesilaSchedule) -> Void) {
         durations = ActiveForView(onSelect: onDuration)
-        let edit = MenuActionButton(title: "Edit Schedule…")
-        edit.setAccessibilityLabel("Edit Schedule")
-        edit.onClick = onEdit
-        scheduledContent = NSStackView(views: [summary, edit])
+        scheduledContent = ScheduleControlsView(onChange: onSchedule)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
@@ -32,11 +29,6 @@ final class ActivationView: NSView {
             pill.heightAnchor.constraint(equalTo: modes.heightAnchor).isActive = true
             pills[mode] = pill
         }
-        summary.font = .systemFont(ofSize: 11)
-        summary.textColor = .secondaryLabelColor
-        scheduledContent.orientation = .vertical
-        scheduledContent.alignment = .leading
-        scheduledContent.spacing = MenuStyle.smallGap
         let content = NSStackView(views: [label, modes, durations, scheduledContent])
         content.orientation = .vertical
         content.alignment = .leading
@@ -46,8 +38,7 @@ final class ActivationView: NSView {
             modes.widthAnchor.constraint(equalTo: content.widthAnchor),
             modes.heightAnchor.constraint(equalToConstant: 24),
             durations.widthAnchor.constraint(equalTo: content.widthAnchor),
-            scheduledContent.widthAnchor.constraint(equalTo: content.widthAnchor),
-            edit.heightAnchor.constraint(equalToConstant: 24)
+            scheduledContent.widthAnchor.constraint(equalTo: content.widthAnchor)
         ])
     }
 
@@ -62,8 +53,6 @@ final class ActivationView: NSView {
         durations.update(selected: preferences.duration)
         durations.isHidden = preferences.activationMode != .manual
         scheduledContent.isHidden = preferences.activationMode != .scheduled
-        summary.stringValue = VesilaFormatter.scheduleSummary(preferences.schedule)
-        summary.setAccessibilityLabel("Schedule")
-        summary.setAccessibilityValue(summary.stringValue)
+        scheduledContent.update(schedule: preferences.schedule)
     }
 }

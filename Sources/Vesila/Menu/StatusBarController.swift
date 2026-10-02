@@ -15,10 +15,6 @@ final class StatusBarController: NSObject {
     private let updaterController: UpdaterController
     private lazy var aboutWindowController = AboutWindowController(updaterController: updaterController)
 
-    private lazy var scheduleWindowController = ScheduleWindowController { [weak self] schedule in
-        self?.controller.setSchedule(schedule)
-    }
-
     // Set only while the menu is open. The menu and its view are rebuilt on every open.
     private weak var openMenu: NSMenu?
     private weak var openMenuView: VesilaMenuView?
@@ -90,9 +86,8 @@ final class StatusBarController: NSObject {
             controller.setStayActiveWhenLocked(isOn)
         case .selectActivationMode(let mode):
             controller.selectActivationMode(mode)
-        case .editSchedule:
-            openMenu?.cancelTracking()
-            scheduleWindowController.show(schedule: controller.state.preferences.schedule)
+        case .setSchedule(let schedule):
+            controller.setSchedule(schedule)
         case .selectDuration(let duration):
             controller.selectDuration(duration)
         case .setStartOnLaunch(let isOn):

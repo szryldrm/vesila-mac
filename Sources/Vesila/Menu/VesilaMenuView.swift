@@ -10,7 +10,7 @@ final class VesilaMenuView: NSView {
         case setSystemAwake(Bool)
         case setStayActiveWhenLocked(Bool)
         case selectActivationMode(VesilaActivationMode)
-        case editSchedule
+        case setSchedule(VesilaSchedule)
         case selectDuration(VesilaDuration)
         case setStartOnLaunch(Bool)
         case showAbout
@@ -32,7 +32,7 @@ final class VesilaMenuView: NSView {
         stayActiveRow = StayActiveWhenLockedRowView { onAction(.setStayActiveWhenLocked($0)) }
         activationPicker = ActivationView(onMode: { onAction(.selectActivationMode($0)) },
                                           onDuration: { onAction(.selectDuration($0)) },
-                                          onEdit: { onAction(.editSchedule) })
+                                          onSchedule: { onAction(.setSchedule($0)) })
         startOnLaunchRow = StartOnLaunchRowView { onAction(.setStartOnLaunch($0)) }
         super.init(frame: NSRect(x: 0, y: 0, width: MenuStyle.width, height: 1))
 
