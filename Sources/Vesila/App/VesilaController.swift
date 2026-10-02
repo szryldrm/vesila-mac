@@ -12,10 +12,12 @@ import OSLog
 ///
 /// Because services are always reconciled against the state (never toggled ad hoc), the
 /// invariants hold by construction: System Awake off means no power assertions; no session
-/// means no expiration timer; launch and every interruption leave both main features off, except
-/// a screen lock while Stay Active When Locked is on and System Awake is active, which keeps
+/// means no expiration timer; Manual launches start off, Scheduled launches evaluate the window, and
+/// interruptions leave both main features off, except a screen lock while Stay Active When Locked is on and System Awake is active, which keeps
 /// the running session untouched. Turning System Awake off keeps the stored lock preference.
-/// Every interruption, that lock included, abandons a pending Presence activation.
+/// Every interruption, that lock included, abandons a pending Presence activation. Resume and
+/// clock events re-evaluate the schedule with lock/session availability, then replace one boundary
+/// timer. Actual activity remains solely in VesilaState; no schedule membership is cached.
 @MainActor
 final class VesilaController {
     private(set) var state: VesilaState
@@ -37,13 +39,32 @@ final class VesilaController {
     /// Internal-readable so tests can fire the real timer instead of waiting out a duration.
     private(set) var expirationTimer: Timer?
     private var accessibilityGrantTimer: Timer?
+    private(set) var scheduleTimer: Timer?
+    private let now: () -> Date
+    private let calendar: () -> Calendar
+    private let sessionSnapshot: () -> (locked: Bool, active: Bool)
+    private var screenLocked: Bool
+    private var sessionInactive: Bool
+    private var sleeping = false
+    private var lidClosed = false
+
+    private var canScheduleActivate: Bool { !screenLocked && !sessionInactive && !sleeping && !lidClosed }
 
     /// `presenceKeeper` is only passed by tests, to drive its polls directly.
     init(
         preferencesStore: PreferencesStore = PreferencesStore(),
         isAccessibilityGranted: @escaping () -> Bool = { AccessibilityPermission.isGranted },
-        presenceKeeper: PresenceKeeper? = nil
+        presenceKeeper: PresenceKeeper? = nil,
+        now: @escaping () -> Date = { .now },
+        calendar: @escaping () -> Calendar = { .current },
+        sessionSnapshot: @escaping () -> (locked: Bool, active: Bool) = { InterruptionMonitor.sessionSnapshot() }
     ) {
+        self.now = now
+        self.calendar = calendar
+        self.sessionSnapshot = sessionSnapshot
+        let session = sessionSnapshot()
+        screenLocked = session.locked
+        sessionInactive = !session.active
         self.preferencesStore = preferencesStore
         self.isAccessibilityGranted = isAccessibilityGranted
         self.presenceKeeper = presenceKeeper ?? PresenceKeeper(isAccessibilityGranted: isAccessibilityGranted)
@@ -52,9 +73,12 @@ final class VesilaController {
         self.presenceKeeper.onAccessibilityRevoked = { [weak self] in
             self?.turnPresenceOffAfterAccessibilityRevoked()
         }
-        interruptionMonitor.start { [weak self] interruption in
+        interruptionMonitor.start(onInterruption: { [weak self] interruption in
             self?.handleInterruption(interruption)
-        }
+        }, onResume: { [weak self] event in
+            self?.handleResume(event)
+        })
+        evaluateSchedule()
     }
 
     // MARK: - Intents
@@ -66,11 +90,13 @@ final class VesilaController {
             onChange?(state)
             return
         }
-        update { $0.setPresence(isOn, now: .now) }
+        update { $0.setPresence(isOn, now: now(), calendar: calendar()) }
+        if !state.isSessionActive { cancelPendingPresenceActivation() }
     }
 
     func setSystemAwakeActive(_ isOn: Bool) {
-        update { $0.setSystemAwake(isOn, now: .now) }
+        update { $0.setSystemAwake(isOn, now: now(), calendar: calendar()) }
+        if !state.isSessionActive { cancelPendingPresenceActivation() }
     }
 
     func setStayActiveWhenLocked(_ isOn: Bool) {
@@ -78,7 +104,7 @@ final class VesilaController {
     }
 
     func selectDuration(_ duration: VesilaDuration) {
-        update { $0.selectDuration(duration, now: .now) }
+        update { $0.selectDuration(duration, now: now()) }
     }
 
     /// Right-click: turn everything off, or restore the last combination that was on.
@@ -86,11 +112,12 @@ final class VesilaController {
         setVesilaActive(!state.isSessionActive)
     }
 
-    /// Master switch: restore the last combination or end the session, leaving preferences alone.
+    /// Master switch: restore the last combination or pause the current Scheduled window.
     func setVesilaActive(_ isOn: Bool) {
         guard isOn != state.isSessionActive else { return }
         guard isOn else {
-            turnOff()
+            cancelPendingPresenceActivation()
+            update { $0.turnOffByUser(now: now(), calendar: calendar()) }
             return
         }
         var features = state.preferences.lastActiveFeatures
@@ -99,7 +126,7 @@ final class VesilaController {
             features.presence = false
         }
         if !features.isEmpty {
-            update { $0.setActiveFeatures(features, now: .now) }
+            update { $0.setActiveFeatures(features, now: now(), calendar: calendar()) }
         }
         if presenceNeedsAccess {
             onAccessibilityRequired?()
@@ -108,9 +135,9 @@ final class VesilaController {
         }
     }
 
-    /// Turns both main features off. Also abandons a pending Presence activation, so nothing
-    /// switches back on by itself after right-click-off, expiration, or quit. Every interruption
-    /// abandons it too in `handleInterruption(_:)`, including a lock that keeps the session.
+    /// System end: turns both main features off without creating a pause. Also abandons a
+    /// pending Presence activation. Every interruption abandons it too in `handleInterruption(_:)`,
+    /// including a lock that keeps the session. User ends take the separate override path.
     func turnOff() {
         cancelPendingPresenceActivation()
         update { $0.turnOff() }
@@ -137,6 +164,12 @@ final class VesilaController {
     /// so state, services, and the expiration timer are left exactly as they were.
     func handleInterruption(_ interruption: VesilaInterruption) {
         cancelPendingPresenceActivation()
+        switch interruption {
+        case .screenLocked: screenLocked = true
+        case .sessionResigned: sessionInactive = true
+        case .systemSleep: sleeping = true
+        case .lidClosed: lidClosed = true
+        }
         guard state.shouldEndSession(for: interruption) else {
             Logger.vesila.info("Staying active after interruption: \(interruption.rawValue, privacy: .public) (Stay Active When Locked is on)")
             return
@@ -148,7 +181,61 @@ final class VesilaController {
     /// Called at quit: stops observing the system and releases everything.
     func shutdown() {
         interruptionMonitor.stop()
+        scheduleTimer?.invalidate()
+        scheduleTimer = nil
         turnOff()
+    }
+
+    func selectActivationMode(_ mode: VesilaActivationMode) {
+        update {
+            $0.selectActivationMode(mode, now: now(), calendar: calendar(),
+                                    canActivate: canScheduleActivate, canUsePresence: isAccessibilityGranted())
+        }
+        rescheduleBoundary()
+    }
+
+    func setSchedule(_ schedule: VesilaSchedule) {
+        update {
+            $0.setSchedule(schedule, now: now(), calendar: calendar(),
+                           canActivate: canScheduleActivate, canUsePresence: isAccessibilityGranted())
+        }
+        rescheduleBoundary()
+    }
+
+    /// Internal hooks let tests drive resume events and boundaries with an injected clock.
+    func handleResume(_ event: VesilaResume) {
+        switch event {
+        case .screenUnlocked: screenLocked = false
+        case .sessionActivated: sessionInactive = false
+        case .systemWake:
+            sleeping = false
+            let session = sessionSnapshot()
+            screenLocked = session.locked
+            sessionInactive = !session.active
+        case .lidOpened: lidClosed = false
+        case .clockChanged: break
+        }
+        evaluateSchedule()
+    }
+
+    func evaluateSchedule() {
+        // Manual resume events leave state, services, and rendering untouched.
+        guard state.preferences.activationMode == .scheduled else { return }
+        update {
+            $0.evaluateSchedule(now: now(), calendar: calendar(),
+                                canActivate: canScheduleActivate, canUsePresence: isAccessibilityGranted())
+        }
+        rescheduleBoundary()
+    }
+
+    private func rescheduleBoundary() {
+        scheduleTimer?.invalidate()
+        scheduleTimer = nil
+        guard state.preferences.activationMode == .scheduled,
+              let date = state.preferences.schedule.nextBoundary(after: now(), calendar: calendar()) else { return }
+        scheduleTimer = .scheduledOnMain(interval: max(0.1, date.timeIntervalSince(now())), repeats: false, owner: self) {
+            $0.evaluateSchedule()
+        }
     }
 
     // MARK: - State changes
@@ -169,7 +256,7 @@ final class VesilaController {
         if !systemAwakeHeld {
             // Never show System Awake as on without an assertion actually backing it.
             Logger.vesila.error("System Awake could not create its power assertion; leaving it off.")
-            state.setSystemAwake(false, now: .now)
+            state.setSystemAwake(false, now: now(), calendar: calendar(), userInitiated: false)
         }
 
         presenceKeeper.setActive(state.activeFeatures.presence)
@@ -183,7 +270,7 @@ final class VesilaController {
         expirationTimer?.invalidate()
         expirationTimer = nil
         guard let date else { return }
-        expirationTimer = .scheduledOnMain(interval: max(0.1, date.timeIntervalSinceNow), repeats: false, owner: self) { controller in
+        expirationTimer = .scheduledOnMain(interval: max(0.1, date.timeIntervalSince(now())), repeats: false, owner: self) { controller in
             controller.turnOff()
         }
     }
@@ -193,7 +280,7 @@ final class VesilaController {
     private func turnPresenceOffAfterAccessibilityRevoked() {
         guard state.activeFeatures.presence else { return }
         Logger.vesila.error("Accessibility access was revoked; turning Presence off.")
-        update { $0.setPresence(false, now: .now) }
+        update { $0.setPresence(false, now: now(), calendar: calendar(), userInitiated: false) }
     }
 
     private func cancelPendingPresenceActivation() {
