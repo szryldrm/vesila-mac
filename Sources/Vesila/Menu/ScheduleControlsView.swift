@@ -42,11 +42,13 @@ final class ScheduleControlsView: NSView {
             picker.timeZone = calendar.timeZone
             picker.controlSize = .small
             picker.font = .systemFont(ofSize: 11)
-            // Keep AppKit's component selection and focus ring. The rounded surround owns
-            // the background; native selection remains above it in both appearances.
+            // Let AppKit paint the native field and selected segment against an opaque,
+            // appearance-aware background. Suppressing its background can weaken selection
+            // contrast in a menu. The surround retains the rounded field geometry.
             picker.isBezeled = false
             picker.isBordered = false
-            picker.drawsBackground = false
+            picker.drawsBackground = true
+            picker.backgroundColor = .textBackgroundColor
             picker.textColor = .textColor
             picker.focusRingType = .default
             picker.presentsCalendarOverlay = false
