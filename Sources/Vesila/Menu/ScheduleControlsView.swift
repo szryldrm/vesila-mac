@@ -40,7 +40,18 @@ final class ScheduleControlsView: NSView {
             picker.datePickerElements = .hourMinute
             picker.calendar = calendar
             picker.timeZone = calendar.timeZone
+            picker.controlSize = .small
             picker.font = .systemFont(ofSize: 11)
+            // Keep AppKit's component selection and focus ring. The rounded surround owns
+            // the background; native selection remains above it in both appearances.
+            picker.isBezeled = false
+            picker.isBordered = false
+            picker.drawsBackground = false
+            picker.textColor = .textColor
+            picker.focusRingType = .default
+            picker.presentsCalendarOverlay = false
+            picker.setContentHuggingPriority(.required, for: .horizontal)
+            picker.setContentCompressionResistancePriority(.required, for: .horizontal)
             picker.target = self
             picker.action = #selector(timeChanged)
             picker.setAccessibilityLabel(label)
@@ -52,18 +63,31 @@ final class ScheduleControlsView: NSView {
             label.font = .systemFont(ofSize: 10.5)
             label.textColor = .secondaryLabelColor
         }
-        let times = NSStackView(views: [startLabel, startPicker, NSView(), endLabel, endPicker])
+        let arrow = NSTextField(labelWithString: "→")
+        arrow.font = .systemFont(ofSize: 11)
+        arrow.textColor = .tertiaryLabelColor
+        arrow.setAccessibilityElement(false)
+        let times = NSStackView(views: [startLabel, roundedField(startPicker), arrow, endLabel, roundedField(endPicker)])
         times.orientation = .horizontal
         times.alignment = .centerY
         times.spacing = MenuStyle.smallGap
-        let content = NSStackView(views: [days, times])
+        let timeRow = NSView()
+        timeRow.translatesAutoresizingMaskIntoConstraints = false
+        timeRow.addSubview(times)
+        times.translatesAutoresizingMaskIntoConstraints = false
+        let content = NSStackView(views: [days, timeRow])
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = MenuStyle.childGap
         MenuStyle.pin(content, to: self)
         NSLayoutConstraint.activate([
             days.widthAnchor.constraint(equalTo: content.widthAnchor),
-            times.widthAnchor.constraint(equalTo: content.widthAnchor)
+            timeRow.widthAnchor.constraint(equalTo: content.widthAnchor),
+            times.centerXAnchor.constraint(equalTo: timeRow.centerXAnchor),
+            times.topAnchor.constraint(equalTo: timeRow.topAnchor),
+            times.bottomAnchor.constraint(equalTo: timeRow.bottomAnchor),
+            times.leadingAnchor.constraint(greaterThanOrEqualTo: timeRow.leadingAnchor),
+            times.trailingAnchor.constraint(lessThanOrEqualTo: timeRow.trailingAnchor)
         ])
         update(schedule: schedule)
     }
@@ -79,17 +103,32 @@ final class ScheduleControlsView: NSView {
             pill.setAccessibilityValue(pill.isSelected ? "Selected" : "Not selected")
             pill.setAccessibilityHelp(pill.isEnabled ? "Toggle schedule day" : "At least one day must remain selected")
         }
-        // Clear old bounds before applying new values, so external schedule edits aren't clamped.
-        for picker in [startPicker, endPicker] {
+        synchronize(startPicker, minute: schedule.startMinute, minimum: 0, maximum: schedule.endMinute - 1)
+        synchronize(endPicker, minute: schedule.endMinute, minimum: schedule.startMinute + 1, maximum: 1439)
+    }
+
+    private func roundedField(_ picker: NSDatePicker) -> NSView {
+        let field = MenuSurfaceView(cornerRadius: MenuStyle.controlRadius)
+        field.fillColor = .textBackgroundColor
+        // Do not clip AppKit's focus ring or selected component drawing.
+        field.layer?.masksToBounds = false
+        MenuStyle.pin(picker, to: field, inset: MenuStyle.smallGap)
+        return field
+    }
+
+    private func synchronize(_ picker: NSDatePicker, minute: Int, minimum: Int, maximum: Int) {
+        let value = date(for: minute)
+        // A native edit already has the right value. Assigning it again during render
+        // can reset the selected hour/minute, including on the controller's echo render.
+        if picker.dateValue != value {
             picker.minDate = nil
             picker.maxDate = nil
+            picker.dateValue = value
         }
-        startPicker.dateValue = date(for: schedule.startMinute)
-        endPicker.dateValue = date(for: schedule.endMinute)
-        startPicker.minDate = date(for: 0)
-        startPicker.maxDate = date(for: schedule.endMinute - 1)
-        endPicker.minDate = date(for: schedule.startMinute + 1)
-        endPicker.maxDate = date(for: 1439)
+        let minDate = date(for: minimum)
+        let maxDate = date(for: maximum)
+        if picker.minDate != minDate { picker.minDate = minDate }
+        if picker.maxDate != maxDate { picker.maxDate = maxDate }
     }
 
     private func date(for minute: Int) -> Date {
