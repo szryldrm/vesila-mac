@@ -26,22 +26,59 @@ struct ScheduleControlsTests {
     @Test func timeChangesCommitAndInvalidInputRestoresPersistedValues() throws {
         var changes: [VesilaSchedule] = []
         let controls = ScheduleControlsView(calendar: scheduleCalendar) { changes.append($0) }
-        let pickers = descendants(of: controls).compactMap { $0 as? NSDatePicker }
-        let start = try #require(pickers.first { $0.accessibilityLabel() == "Start time" })
-        let end = try #require(pickers.first { $0.accessibilityLabel() == "End time" })
-        start.dateValue = start.dateValue.addingTimeInterval(3600)
-        _ = start.sendAction(start.action, to: start.target)
+        let editors = descendants(of: controls).compactMap { $0 as? SegmentedTimeView }
+        let start = try #require(editors.first)
+        let end = try #require(editors.last)
+        start.hour.increment(by: 1)
         #expect(changes == [VesilaSchedule(startMinute: 600)])
-        #expect(end.minDate == start.dateValue.addingTimeInterval(60))
-        // Bypass the picker bounds to exercise defensive validation of a same-time edit.
-        end.minDate = nil
-        end.dateValue = start.dateValue
-        _ = end.sendAction(end.action, to: end.target)
+        end.onChange?(600)
         #expect(changes.count == 1)
-        #expect(scheduleCalendar.component(.hour, from: end.dateValue) == 18)
+        #expect(end.minutes == 1080)
         controls.update(schedule: VesilaSchedule(startMinute: 120, endMinute: 240))
-        #expect(scheduleCalendar.component(.hour, from: start.dateValue) == 2)
-        #expect(scheduleCalendar.component(.hour, from: end.dateValue) == 4)
+        #expect(start.hour.value == 2)
+        #expect(end.hour.value == 4)
+        #expect(start.hour.accessibilityLabel() == "Start time hour")
+        #expect(end.minute.accessibilityLabel() == "End time minute")
+    }
+
+    @Test func componentFocusNavigationAndKeyboardEditing() throws {
+        _ = NSApplication.shared
+        let controls = ScheduleControlsView(calendar: scheduleCalendar) { _ in }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 276, height: 80),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = controls
+        let segments = descendants(of: controls).compactMap { $0 as? TimeSegmentView }
+        #expect(segments.count == 4)
+        #expect(window.makeFirstResponder(segments[0]))
+        #expect(segments.map(\.isActive) == [true, false, false, false])
+        func key(_ code: UInt16, characters: String = "", flags: NSEvent.ModifierFlags = []) throws -> NSEvent {
+            try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags,
+                timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
+        }
+        segments[0].keyDown(with: try key(124))
+        #expect(segments.map(\.isActive) == [false, true, false, false])
+        segments[1].keyDown(with: try key(126))
+        #expect(segments[1].value == 1)
+        segments[1].keyDown(with: try key(48))
+        #expect(segments[2].isActive)
+        segments[2].keyDown(with: try key(48, flags: .shift))
+        #expect(segments[1].isActive)
+        segments[1].keyDown(with: try key(0, characters: "2"))
+        segments[1].keyDown(with: try key(0, characters: "5"))
+        #expect(segments[1].value == 25)
+        segments[1].onNavigate?(false)
+        #expect(segments[0].isActive)
+        // Component wrapping never rolls the adjacent component or produces invalid hours.
+        controls.update(schedule: VesilaSchedule(startMinute: 0, endMinute: 1439))
+        segments[3].increment(by: 1)
+        #expect(segments[2].value == 23)
+        #expect(segments[3].value == 0)
+        controls.update(schedule: VesilaSchedule(startMinute: 0, endMinute: 60))
+        segments[0].increment(by: -1)
+        #expect(segments[0].value == 0) // Invalid range rejected.
+        window.makeFirstResponder(nil)
+        #expect(!segments.contains { $0.isActive })
     }
 
     @Test func menuExpandsOnlyInScheduledModeAndRoutesEditsWithoutAWindow() throws {
@@ -67,9 +104,10 @@ struct ScheduleControlsTests {
             Issue.record("Inline edit must route directly to setSchedule")
         }
         menu.layoutSubtreeIfNeeded()
-        for view in descendants(of: controls) where view is NSDatePicker || view is MenuActionButton {
+        for view in descendants(of: controls) where view is TimeSegmentView || view is MenuActionButton {
             #expect(menu.bounds.contains(view.convert(view.bounds, to: menu)))
         }
+        #expect(!descendants(of: controls).contains { $0 is NSDatePicker || $0 is NSStepper })
         #expect(!descendants(of: menu).compactMap { $0 as? NSButton }.contains { $0.title == "Edit Schedule…" })
         preferences.activationMode = .manual
         state = VesilaState(preferences: preferences)

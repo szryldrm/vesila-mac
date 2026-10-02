@@ -2,19 +2,13 @@ import AppKit
 
 /// Inline schedule input. Only valid same-day changes reach the controller and persistence.
 final class ScheduleControlsView: NSView {
-    private let calendar: Calendar
     private let onChange: (VesilaSchedule) -> Void
     private var schedule = VesilaSchedule()
     private var dayPills: [Int: MenuActionButton] = [:]
-    private let startPicker = NSDatePicker()
-    private let endPicker = NSDatePicker()
-    // A fixed non-transition day keeps these controls editing wall-clock minutes only.
-    private var referenceDay: Date {
-        calendar.date(from: DateComponents(year: 2024, month: 1, day: 15))!
-    }
+    private let startTime = SegmentedTimeView(label: "Start time")
+    private let endTime = SegmentedTimeView(label: "End time")
 
     init(calendar: Calendar = .current, onChange: @escaping (VesilaSchedule) -> Void) {
-        self.calendar = calendar
         self.onChange = onChange
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -35,41 +29,33 @@ final class ScheduleControlsView: NSView {
             days.addArrangedSubview(pill)
             pill.heightAnchor.constraint(equalToConstant: 24).isActive = true
         }
-        for (picker, label) in [(startPicker, "Start time"), (endPicker, "End time")] {
-            picker.datePickerStyle = .textFieldAndStepper
-            picker.datePickerElements = .hourMinute
-            picker.calendar = calendar
-            picker.timeZone = calendar.timeZone
-            picker.controlSize = .small
-            picker.font = .systemFont(ofSize: 11)
-            // Let AppKit paint the native field and selected segment against an opaque,
-            // appearance-aware background. Suppressing its background can weaken selection
-            // contrast in a menu. The surround retains the rounded field geometry.
-            picker.isBezeled = false
-            picker.isBordered = false
-            picker.drawsBackground = true
-            picker.backgroundColor = .textBackgroundColor
-            picker.textColor = .textColor
-            picker.focusRingType = .default
-            picker.presentsCalendarOverlay = false
-            picker.setContentHuggingPriority(.required, for: .horizontal)
-            picker.setContentCompressionResistancePriority(.required, for: .horizontal)
-            picker.target = self
-            picker.action = #selector(timeChanged)
-            picker.setAccessibilityLabel(label)
-            picker.translatesAutoresizingMaskIntoConstraints = false
+        startTime.onChange = { [weak self] minutes in
+            guard let self else { return }
+            var updated = self.schedule
+            updated.startMinute = minutes
+            self.commit(updated)
         }
-        let startLabel = NSTextField(labelWithString: "Start")
-        let endLabel = NSTextField(labelWithString: "End")
-        for label in [startLabel, endLabel] {
-            label.font = .systemFont(ofSize: 10.5)
-            label.textColor = .secondaryLabelColor
+        endTime.onChange = { [weak self] minutes in
+            guard let self else { return }
+            var updated = self.schedule
+            updated.endMinute = minutes
+            self.commit(updated)
+        }
+        let segments = [startTime.hour, startTime.minute, endTime.hour, endTime.minute]
+        for (index, segment) in segments.enumerated() {
+            if index + 1 < segments.count { segment.nextKeyView = segments[index + 1] }
+            let previous = index > 0 ? segments[index - 1] : nil
+            let next = index + 1 < segments.count ? segments[index + 1] : nil
+            segment.onNavigate = { [weak self, weak previous, weak next] forward in
+                guard let destination = forward ? next : previous else { return }
+                self?.window?.makeFirstResponder(destination)
+            }
         }
         let arrow = NSTextField(labelWithString: "→")
         arrow.font = .systemFont(ofSize: 11)
         arrow.textColor = .tertiaryLabelColor
         arrow.setAccessibilityElement(false)
-        let times = NSStackView(views: [startLabel, roundedField(startPicker), arrow, endLabel, roundedField(endPicker)])
+        let times = NSStackView(views: [startTime, arrow, endTime])
         times.orientation = .horizontal
         times.alignment = .centerY
         times.spacing = MenuStyle.smallGap
@@ -105,45 +91,8 @@ final class ScheduleControlsView: NSView {
             pill.setAccessibilityValue(pill.isSelected ? "Selected" : "Not selected")
             pill.setAccessibilityHelp(pill.isEnabled ? "Toggle schedule day" : "At least one day must remain selected")
         }
-        synchronize(startPicker, minute: schedule.startMinute, minimum: 0, maximum: schedule.endMinute - 1)
-        synchronize(endPicker, minute: schedule.endMinute, minimum: schedule.startMinute + 1, maximum: 1439)
-    }
-
-    private func roundedField(_ picker: NSDatePicker) -> NSView {
-        let field = MenuSurfaceView(cornerRadius: MenuStyle.controlRadius)
-        field.fillColor = .textBackgroundColor
-        // Do not clip AppKit's focus ring or selected component drawing.
-        field.layer?.masksToBounds = false
-        MenuStyle.pin(picker, to: field, inset: MenuStyle.smallGap)
-        return field
-    }
-
-    private func synchronize(_ picker: NSDatePicker, minute: Int, minimum: Int, maximum: Int) {
-        let value = date(for: minute)
-        // A native edit already has the right value. Assigning it again during render
-        // can reset the selected hour/minute, including on the controller's echo render.
-        if picker.dateValue != value {
-            picker.minDate = nil
-            picker.maxDate = nil
-            picker.dateValue = value
-        }
-        let minDate = date(for: minimum)
-        let maxDate = date(for: maximum)
-        if picker.minDate != minDate { picker.minDate = minDate }
-        if picker.maxDate != maxDate { picker.maxDate = maxDate }
-    }
-
-    private func date(for minute: Int) -> Date {
-        calendar.date(bySettingHour: minute / 60, minute: minute % 60, second: 0, of: referenceDay)!
-    }
-
-    @objc private func timeChanged() {
-        var updated = schedule
-        let start = calendar.dateComponents([.hour, .minute], from: startPicker.dateValue)
-        let end = calendar.dateComponents([.hour, .minute], from: endPicker.dateValue)
-        updated.startMinute = (start.hour ?? 0) * 60 + (start.minute ?? 0)
-        updated.endMinute = (end.hour ?? 0) * 60 + (end.minute ?? 0)
-        commit(updated)
+        startTime.update(minutes: schedule.startMinute)
+        endTime.update(minutes: schedule.endMinute)
     }
 
     private func commit(_ updated: VesilaSchedule) {
