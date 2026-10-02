@@ -1,6 +1,6 @@
 import Foundation
 
-/// Presence and System Awake: the two features that make up a Vesila session.
+/// System Awake is the master activity feature; Presence depends on it.
 /// Stay Active When Locked is deliberately not part of this. It is a preference, not a feature.
 struct MainFeatures: Equatable {
     var presence = false
@@ -89,8 +89,8 @@ enum VesilaInterruption: String {
 /// `VesilaController` owns the single instance and mirrors it into the system services.
 ///
 /// Invariants, maintained by the mutating methods below:
-/// - A session exists exactly while at least one main feature is on. It starts on the
-///   none → any transition; turning the other feature on or off doesn't restart it.
+/// - Presence implies System Awake. A session exists exactly while System Awake is on.
+///   Changing Presence never starts, ends, or restarts a session.
 /// - `expirationDate` is nil without a session. In Manual mode it follows the selected duration;
 ///   in Scheduled mode it is the current unpaused window's end, or nil for an outside session.
 /// - Window membership and pause are derived from preferences, now, and Calendar. Only the
@@ -109,7 +109,7 @@ struct VesilaState: Equatable {
         self.preferences = preferences
     }
 
-    var isSessionActive: Bool { !activeFeatures.isEmpty }
+    var isSessionActive: Bool { activeFeatures.systemAwake }
 
     /// Shared by the menu enablement and the screen-lock rule; independent of the stored choice.
     var isStayActiveWhenLockedAvailable: Bool { activeFeatures.systemAwake }
@@ -121,6 +121,7 @@ struct VesilaState: Equatable {
     }
 
     mutating func setPresence(_ isOn: Bool, now: Date, calendar: Calendar = .current, userInitiated: Bool = true) {
+        guard !isOn || activeFeatures.systemAwake else { return }
         var features = activeFeatures
         features.presence = isOn
         setActiveFeatures(features, now: now, calendar: calendar, userInitiated: userInitiated)
@@ -133,6 +134,8 @@ struct VesilaState: Equatable {
     }
 
     mutating func setActiveFeatures(_ features: MainFeatures, now: Date, calendar: Calendar = .current, userInitiated: Bool = true) {
+        var features = features
+        if !features.systemAwake { features.presence = false }
         let sessionWasActive = isSessionActive
         activeFeatures = features
         if userInitiated, preferences.activationMode == .scheduled,

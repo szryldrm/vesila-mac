@@ -1,4 +1,5 @@
 import AppKit
+import IOKit.pwr_mgt
 import Testing
 @testable import Vesila
 
@@ -13,11 +14,11 @@ struct SystemIntegrationTests {
 
     // MARK: PowerAssertionService
 
-    @Test func systemAwakeHoldsOnlyTheSystemAssertion() {
+    @Test func systemAwakeHoldsBothAssertions() {
         let service = PowerAssertionService()
         #expect(service.update(preventSystemSleep: true))
-        #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
-        #expect(!vesilaPowerAssertionTypesHeldByThisProcess().contains(displaySleepAssertionType))
+        #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
+        #expect(vesilaPowerAssertionTypesHeldByThisProcess().contains(displaySleepAssertionType))
 
         #expect(service.update(preventSystemSleep: false))
         #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
@@ -28,7 +29,7 @@ struct SystemIntegrationTests {
         for _ in 0..<3 {
             service.update(preventSystemSleep: true)
         }
-        #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+        #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
         for _ in 0..<3 {
             service.releaseAll()
         }
@@ -39,9 +40,46 @@ struct SystemIntegrationTests {
         do {
             let service = PowerAssertionService()
             service.update(preventSystemSleep: true)
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
         }
         #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
+    }
+
+    @Test(arguments: [systemSleepAssertionType, displaySleepAssertionType])
+    func partialAcquisitionFailureReleasesEverythingAndClearsPresence(failingType: String) {
+        withTemporaryDefaults { defaults in
+            var attempts: [String] = []
+            var releases: [IOPMAssertionID] = []
+            let service = PowerAssertionService(createAssertion: { type, _ in
+                attempts.append(type)
+                return type == failingType ? nil : IOPMAssertionID(42)
+            }, releaseAssertion: { releases.append($0) })
+            let controller = VesilaController(preferencesStore: PreferencesStore(defaults: defaults),
+                                              isAccessibilityGranted: { true }, powerAssertions: service)
+            controller.quickToggle()
+            #expect(controller.state.activeFeatures == .none)
+            #expect(controller.expirationTimer == nil)
+            #expect(controller.state.preferences.pausedWindowDay == nil)
+            #expect(attempts == [systemSleepAssertionType, displaySleepAssertionType])
+            #expect(releases == [42])
+            service.releaseAll()
+            controller.shutdown()
+            #expect(releases == [42], "no double release after rollback")
+        }
+    }
+
+    @Test func grantPollWhileMasterOffCannotStartPresence() {
+        withTemporaryDefaults { defaults in
+            var granted = false
+            let controller = makeController(defaults: defaults, accessibilityGranted: { granted })
+            defer { controller.shutdown() }
+            let before = controller.state
+            controller.activatePresenceWhenAccessibilityGranted()
+            granted = true
+            RunLoop.main.run(until: .now + 1.5)
+            #expect(controller.state == before)
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
+        }
     }
 
     // MARK: VesilaController
@@ -62,26 +100,26 @@ struct SystemIntegrationTests {
             defer { controller.shutdown() }
             controller.setSystemAwakeActive(true)
             #expect(controller.state.activeFeatures == MainFeatures(presence: false, systemAwake: true))
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
 
             controller.setSystemAwakeActive(false)
             #expect(vesilaPowerAssertionTypesHeldByThisProcess().isEmpty)
         }
     }
 
-    /// Keep Display Awake is gone: System Awake never keeps the display on, whatever the new setting.
+    /// The lock preference never changes which assertions System Awake holds.
     @Test(arguments: [true, false])
-    func systemAwakeNeverHoldsADisplayAssertion(stayActiveWhenLocked: Bool) {
+    func systemAwakeHoldsBothRegardlessOfLockPreference(stayActiveWhenLocked: Bool) {
         withTemporaryDefaults { defaults in
             let controller = makeController(defaults: defaults)
             defer { controller.shutdown() }
             controller.setStayActiveWhenLocked(stayActiveWhenLocked)
             controller.setSystemAwakeActive(true)
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
-            #expect(!vesilaPowerAssertionTypesHeldByThisProcess().contains(displaySleepAssertionType))
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess().contains(displaySleepAssertionType))
 
             controller.setStayActiveWhenLocked(!stayActiveWhenLocked)
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
         }
     }
 
@@ -110,7 +148,7 @@ struct SystemIntegrationTests {
     }
 
     @Test(arguments: [true, false])
-    func presenceOnlyLockEndsTheSessionWhateverTheStoredChoice(storedChoice: Bool) {
+    func presenceWhileMasterIsOffDoesNotStartASession(storedChoice: Bool) {
         withTemporaryDefaults { defaults in
             let controller = makeController(defaults: defaults, accessibilityGranted: { true })
             defer { controller.shutdown() }
@@ -163,7 +201,7 @@ struct SystemIntegrationTests {
             #expect(controller.state.activeFeatures == .both)
             #expect(controller.state.expirationDate == expiration)
             #expect(controller.state.preferences.lastActiveFeatures == .both)
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
         }
     }
 
@@ -195,7 +233,7 @@ struct SystemIntegrationTests {
             #expect(controller.state == beforeLock)
             #expect(controller.state.activeFeatures == .both)
             #expect(controller.state.expirationDate == beforeLock.expirationDate)
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
             // No render means `update(_:)` never ran, so services and the expiration timer were not touched.
             #expect(renders == 0)
         }
@@ -225,7 +263,7 @@ struct SystemIntegrationTests {
             #expect(controller.state == afterLock)
             #expect(renders == 0)
             #expect(controller.state.isSessionActive == stayActiveWhenLocked)
-            let expectedAssertions: [String] = stayActiveWhenLocked ? [systemSleepAssertionType] : []
+            let expectedAssertions: [String] = stayActiveWhenLocked ? [displaySleepAssertionType, systemSleepAssertionType] : []
             #expect(vesilaPowerAssertionTypesHeldByThisProcess() == expectedAssertions)
         }
     }
@@ -248,7 +286,7 @@ struct SystemIntegrationTests {
             #expect(timer.isValid)
             #expect(abs(timer.fireDate.timeIntervalSince(expiration)) < 1)
             #expect(controller.state.expirationDate == expiration)
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
 
             timer.fire()
             #expect(controller.state.activeFeatures == .none)
@@ -269,14 +307,15 @@ struct SystemIntegrationTests {
             controller.onAccessibilityRequired = { prompts += 1 }
             controller.onChange = { _ in renders += 1 }
 
+            controller.setSystemAwakeActive(true)
             controller.setPresenceActive(true)
-            #expect(controller.state.activeFeatures == .none)
+            #expect(controller.state.activeFeatures == MainFeatures(systemAwake: true))
             #expect(prompts == 1)
-            #expect(renders == 1, "the UI re-renders so the clicked toggle snaps back")
+            #expect(renders == 2, "the card re-renders to reflect actual state")
         }
     }
 
-    @Test(arguments: [MainFeatures.both, MainFeatures(presence: true, systemAwake: false), MainFeatures(presence: false, systemAwake: true)], VesilaDuration.allCases)
+    @Test(arguments: [MainFeatures.both, MainFeatures(presence: false, systemAwake: true)], VesilaDuration.allCases)
     func masterSwitchRestoresCombinationAndSelectedDuration(features: MainFeatures, duration: VesilaDuration) throws {
         try withTemporaryDefaults { defaults in
             let preferences = VesilaPreferences(stayActiveWhenLocked: true, duration: duration, lastActiveFeatures: features)
@@ -324,7 +363,7 @@ struct SystemIntegrationTests {
         }
     }
 
-    @Test(arguments: [MainFeatures.both, MainFeatures(presence: true, systemAwake: false)])
+    @Test(arguments: [MainFeatures.both])
     func masterSwitchWithoutAccessibilityRestoresWhatItCanAndRendersActualState(features: MainFeatures) {
         withTemporaryDefaults { defaults in
             PreferencesStore(defaults: defaults).save(VesilaPreferences(lastActiveFeatures: features))
@@ -339,12 +378,7 @@ struct SystemIntegrationTests {
             #expect(controller.state.activeFeatures == MainFeatures(presence: false, systemAwake: features.systemAwake))
             #expect(controller.state.isSessionActive == features.systemAwake)
             #expect(prompts == 1)
-            #expect(renderedState == controller.state, "the clicked switch reflects the actual session")
-            if !features.systemAwake {
-                #expect(controller.state.expirationDate == nil)
-                #expect(controller.expirationTimer == nil)
-                #expect(controller.state.preferences.lastActiveFeatures == features)
-            }
+            #expect(renderedState == controller.state, "rendering reflects the actual session")
         }
     }
 
@@ -372,7 +406,8 @@ struct SystemIntegrationTests {
         }
     }
 
-    @Test func masterSwitchOffCancelsPendingPresenceActivation() {
+    @Test(arguments: [true, false])
+    func userOffCancelsPendingPresenceActivation(viaSystemAwake: Bool) {
         withTemporaryDefaults { defaults in
             var granted = false
             let controller = makeController(defaults: defaults, accessibilityGranted: { granted })
@@ -380,7 +415,11 @@ struct SystemIntegrationTests {
             controller.setSystemAwakeActive(true)
             controller.activatePresenceWhenAccessibilityGranted()
 
-            controller.setVesilaActive(false)
+            if viaSystemAwake {
+                controller.setSystemAwakeActive(false)
+            } else {
+                controller.setVesilaActive(false)
+            }
             granted = true
             RunLoop.main.run(until: .now + 1.5)
             #expect(!controller.state.isSessionActive)
@@ -493,7 +532,7 @@ struct SystemIntegrationTests {
             presenceKeeper.tick(at: .now)
             #expect(controller.state.activeFeatures == MainFeatures(presence: false, systemAwake: true))
             #expect(controller.state.expirationDate == expiration, "the session is not restarted")
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
             let rendersAfterRevocation = renders
             #expect(rendersAfterRevocation == 2, "one render to turn on, one to turn Presence off")
 
@@ -509,10 +548,11 @@ struct SystemIntegrationTests {
             let controller = makeController(defaults: defaults, accessibilityGranted: { granted })
             defer { controller.shutdown() }
 
+            controller.setSystemAwakeActive(true)
             controller.activatePresenceWhenAccessibilityGranted()
             granted = true
             RunLoop.main.run(until: .now + 1.5)
-            #expect(controller.state.activeFeatures.presence)
+            #expect(controller.state.activeFeatures == .both)
         }
     }
 
@@ -574,7 +614,7 @@ struct SystemIntegrationTests {
             #expect(controller.state.expirationDate == expiration)
             #expect(controller.expirationTimer === timer, "the lock neither cancels nor reschedules it")
             #expect(timer.isValid)
-            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [systemSleepAssertionType])
+            #expect(vesilaPowerAssertionTypesHeldByThisProcess() == [displaySleepAssertionType, systemSleepAssertionType])
         }
     }
 }

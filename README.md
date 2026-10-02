@@ -23,13 +23,13 @@ Vesila lives entirely in the menu bar and gives you a few focused controls:
 
 | Feature | What it does |
 | --- | --- |
-| **Presence** | Helps prevent apps from marking you Away while you're idle at your Mac |
-| **System Awake** | Prevents idle system sleep |
+| **Presence** | Helps prevent apps from marking you Away while you're idle at your Mac; requires System Awake |
+| **System Awake** | The master activity control; prevents idle system and display sleep |
 | **Stay Active When Locked** | Keeps an active session running while the screen is locked when System Awake is enabled |
 | **Scheduled activation** | Runs Vesila automatically on selected days and times |
 | **Start on Launch** | Launches Vesila automatically when you sign in to macOS |
 
-You can also use the main Vesila switch to turn the current session on or off, or right-click the menu bar icon for a quick toggle.
+Click the System Awake card to start or end a session, or right-click the menu bar icon to restore the last combination or turn it off.
 
 ## Activation
 

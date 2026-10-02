@@ -11,7 +11,8 @@ import OSLog
 ///                                        └─▶ onChange ─▶ StatusBarController renders
 ///
 /// Because services are always reconciled against the state (never toggled ad hoc), the
-/// invariants hold by construction: System Awake off means no power assertions; no session
+/// invariants hold by construction: Presence depends on System Awake, which holds both system
+/// and display sleep assertions. System Awake off clears Presence and both assertions; no session
 /// means no expiration timer; Manual launches start off, Scheduled launches evaluate the window, and
 /// interruptions leave both main features off, except a screen lock while Stay Active When Locked is on and System Awake is active, which keeps
 /// the running session untouched. Turning System Awake off keeps the stored lock preference.
@@ -34,7 +35,7 @@ final class VesilaController {
     private let preferencesStore: PreferencesStore
     private let isAccessibilityGranted: () -> Bool
     private let presenceKeeper: PresenceKeeper
-    private let powerAssertions = PowerAssertionService()
+    private let powerAssertions: PowerAssertionService
     private let interruptionMonitor = InterruptionMonitor()
     /// Internal-readable so tests can fire the real timer instead of waiting out a duration.
     private(set) var expirationTimer: Timer?
@@ -50,15 +51,17 @@ final class VesilaController {
 
     private var canScheduleActivate: Bool { !screenLocked && !sessionInactive && !sleeping && !lidClosed }
 
-    /// `presenceKeeper` is only passed by tests, to drive its polls directly.
+    /// Tests can inject Presence polls and power assertion failures.
     init(
         preferencesStore: PreferencesStore = PreferencesStore(),
         isAccessibilityGranted: @escaping () -> Bool = { AccessibilityPermission.isGranted },
         presenceKeeper: PresenceKeeper? = nil,
+        powerAssertions: PowerAssertionService? = nil,
         now: @escaping () -> Date = { .now },
         calendar: @escaping () -> Calendar = { .current },
         sessionSnapshot: @escaping () -> (locked: Bool, active: Bool) = { InterruptionMonitor.sessionSnapshot() }
     ) {
+        self.powerAssertions = powerAssertions ?? PowerAssertionService()
         self.now = now
         self.calendar = calendar
         self.sessionSnapshot = sessionSnapshot
@@ -84,9 +87,10 @@ final class VesilaController {
     // MARK: - Intents
 
     func setPresenceActive(_ isOn: Bool) {
+        guard !isOn || state.activeFeatures.systemAwake else { return }
         guard !isOn || isAccessibilityGranted() else {
             onAccessibilityRequired?()
-            // The toggle already flipped itself on click; re-render so it shows the real state.
+            // The card already flipped itself on click; re-render so it shows the real state.
             onChange?(state)
             return
         }
@@ -112,7 +116,7 @@ final class VesilaController {
         setVesilaActive(!state.isSessionActive)
     }
 
-    /// Master switch: restore the last combination or pause the current Scheduled window.
+    /// Quick-toggle activity control: restore the last combination or pause the current Scheduled window.
     func setVesilaActive(_ isOn: Bool) {
         guard isOn != state.isSessionActive else { return }
         guard isOn else {
@@ -130,8 +134,6 @@ final class VesilaController {
         }
         if presenceNeedsAccess {
             onAccessibilityRequired?()
-            // A Presence-only restore leaves the session off; reset the clicked master switch.
-            onChange?(state)
         }
     }
 
@@ -254,8 +256,8 @@ final class VesilaController {
     private func reconcileServices(with previous: VesilaState) {
         let systemAwakeHeld = powerAssertions.update(preventSystemSleep: state.activeFeatures.systemAwake)
         if !systemAwakeHeld {
-            // Never show System Awake as on without an assertion actually backing it.
-            Logger.vesila.error("System Awake could not create its power assertion; leaving it off.")
+            // Never show System Awake as on without both assertions actually backing it.
+            Logger.vesila.error("System Awake could not create both power assertions; leaving it off.")
             state.setSystemAwake(false, now: now(), calendar: calendar(), userInitiated: false)
         }
 

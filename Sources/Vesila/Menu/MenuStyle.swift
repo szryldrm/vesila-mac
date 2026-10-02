@@ -29,6 +29,7 @@ enum MenuStyle {
 /// Accent Color changes while the app is running.
 enum CardColor {
     static let surface = adaptive(light: 0.07, dark: 0.10, color: .labelColor)
+    static let disabledSurface = adaptive(light: 0.025, dark: 0.035, color: .labelColor)
     static let hover = adaptive(light: 0.10, dark: 0.14, color: .labelColor)
     /// Active Presence / System Awake card, and the selected duration pill.
     static let accentFill = adaptive(light: 0.75, dark: 0.75, color: .controlAccentColor)
