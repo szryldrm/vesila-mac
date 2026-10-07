@@ -31,7 +31,7 @@ struct ScheduleStateTests {
         #expect(!state.isSessionActive)
     }
 
-    @Test(arguments: [MainFeatures.both, MainFeatures(presence: true, systemAwake: false), MainFeatures(presence: false, systemAwake: true)])
+    @Test(arguments: [MainFeatures.both, MainFeatures(presence: false, systemAwake: true)])
     func accessibilityFilteringMatchesMasterRestore(features: MainFeatures) {
         var state = scheduled(features: features)
         evaluate(&state, at: scheduleDate(hour: 10), presence: false)
@@ -70,24 +70,16 @@ struct ScheduleStateTests {
         #expect(state.expirationDate == scheduleDate(7, hour: 18))
     }
 
-    @Test(arguments: [true, false])
-    func lastFeatureOffPausesAndFeatureOnResumes(presence: Bool) {
-        let features = MainFeatures(presence: presence, systemAwake: !presence)
-        var state = scheduled(features: features)
+    @Test func systemAwakeOffPausesAndOnResumes() {
+        var state = scheduled()
         evaluate(&state, at: scheduleDate(hour: 9))
-        if presence {
-            state.setPresence(false, now: scheduleDate(hour: 10), calendar: scheduleCalendar)
-        } else {
-            state.setSystemAwake(false, now: scheduleDate(hour: 10), calendar: scheduleCalendar)
-        }
-        evaluate(&state, at: scheduleDate(hour: 11))
-        #expect(!state.isSessionActive)
+        state.setSystemAwake(false, now: scheduleDate(hour: 10), calendar: scheduleCalendar)
+        #expect(state.activeFeatures == .none)
         #expect(state.pausedWindow(at: scheduleDate(hour: 11), calendar: scheduleCalendar) != nil)
-        if presence {
-            state.setPresence(true, now: scheduleDate(hour: 14), calendar: scheduleCalendar)
-        } else {
-            state.setSystemAwake(true, now: scheduleDate(hour: 14), calendar: scheduleCalendar)
-        }
+        state.setPresence(true, now: scheduleDate(hour: 11), calendar: scheduleCalendar)
+        evaluate(&state, at: scheduleDate(hour: 12))
+        #expect(state.activeFeatures == .none)
+        state.setSystemAwake(true, now: scheduleDate(hour: 14), calendar: scheduleCalendar)
         #expect(state.preferences.pausedWindowDay == nil)
         #expect(state.expirationDate == scheduleDate(hour: 18))
     }
@@ -103,7 +95,7 @@ struct ScheduleStateTests {
     }
 
     @Test func systemEndsNeverPauseAndResumeMayReactivate() {
-        var state = scheduled(features: MainFeatures(presence: true))
+        var state = scheduled(features: .both)
         evaluate(&state, at: scheduleDate(hour: 9))
         state.setPresence(false, now: scheduleDate(hour: 10), calendar: scheduleCalendar, userInitiated: false)
         #expect(state.preferences.pausedWindowDay == nil)
@@ -136,9 +128,9 @@ struct ScheduleStateTests {
 
     @Test func switchingModesAdoptsOrRemovesCountdownAndRestartsManualDuration() {
         var state = VesilaState()
-        state.setPresence(true, now: scheduleDate(hour: 10))
+        state.setActiveFeatures(.both, now: scheduleDate(hour: 10))
         state.selectActivationMode(.scheduled, now: scheduleDate(hour: 11), calendar: scheduleCalendar, canActivate: true)
-        #expect(state.activeFeatures == MainFeatures(presence: true))
+        #expect(state.activeFeatures == .both)
         #expect(state.expirationDate == scheduleDate(hour: 18))
         state.selectActivationMode(.manual, now: scheduleDate(hour: 12), calendar: scheduleCalendar, canActivate: true)
         #expect(state.expirationDate == scheduleDate(hour: 13))

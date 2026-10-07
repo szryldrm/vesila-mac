@@ -13,7 +13,7 @@ enum VesilaFormatter {
                 return "Paused until \(time(window.end, calendar: calendar, locale: locale))"
             }
             if state.preferences.schedule.window(containing: now, calendar: calendar) != nil {
-                // Activation is unavailable (for example, a Presence-only restore without access).
+                // Activation is unavailable while the system or session is interrupted.
                 return "Inactive"
             }
             if let next = state.preferences.schedule.nextWindow(after: now, calendar: calendar) {

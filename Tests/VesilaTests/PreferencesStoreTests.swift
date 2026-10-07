@@ -72,9 +72,18 @@ struct PreferencesStoreTests {
             let store = PreferencesStore(defaults: defaults)
             #expect(store.load() == VesilaPreferences(
                 duration: .twoHours,
-                lastActiveFeatures: MainFeatures(presence: true, systemAwake: false)
+                lastActiveFeatures: .both
             ))
             #expect(store.isOnboardingCompleted)
+        }
+    }
+
+    @Test func savingInvalidLegacyCombinationWritesBoth() {
+        withTemporaryDefaults { defaults in
+            let store = PreferencesStore(defaults: defaults)
+            store.save(VesilaPreferences(lastActiveFeatures: MainFeatures(presence: true)))
+            #expect(defaults.bool(forKey: "lastEnabledConfiguration.systemAwake"))
+            #expect(store.load().lastActiveFeatures == .both)
         }
     }
 

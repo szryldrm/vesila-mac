@@ -24,8 +24,8 @@ struct SessionLifecycleTests {
 
     @Test func enablingTheSecondFeatureDoesNotRestartTheSession() {
         var state = VesilaState()
-        state.setPresence(true, now: t0)
-        state.setSystemAwake(true, now: t0.addingTimeInterval(minutes(10)))
+        state.setSystemAwake(true, now: t0)
+        state.setPresence(true, now: t0.addingTimeInterval(minutes(10)))
         #expect(state.expirationDate == t0.addingTimeInterval(minutes(60)))
     }
 
@@ -34,18 +34,19 @@ struct SessionLifecycleTests {
         state.setActiveFeatures(.both, now: t0)
         state.setPresence(false, now: t0.addingTimeInterval(minutes(15)))
         #expect(state.isSessionActive)
+        #expect(state.activeFeatures == MainFeatures(systemAwake: true))
         #expect(state.expirationDate == t0.addingTimeInterval(minutes(60)))
     }
 
     @Test func bothOffEndsTheSessionAndTheNextOneStartsFresh() {
         var state = VesilaState()
-        state.setPresence(true, now: t0)
-        state.setPresence(false, now: t0.addingTimeInterval(minutes(5)))
+        state.setActiveFeatures(.both, now: t0)
+        state.setSystemAwake(false, now: t0.addingTimeInterval(minutes(5)))
         #expect(!state.isSessionActive)
         #expect(state.expirationDate == nil)
 
         let restart = t0.addingTimeInterval(minutes(30))
-        state.setPresence(true, now: restart)
+        state.setActiveFeatures(.both, now: restart)
         #expect(state.expirationDate == restart.addingTimeInterval(minutes(60)))
     }
 
@@ -63,7 +64,7 @@ struct SessionLifecycleTests {
 struct DurationTests {
     @Test func changingDurationDuringASessionRestartsTheCountdownFromNow() {
         var state = VesilaState()
-        state.setPresence(true, now: t0)
+        state.setActiveFeatures(.both, now: t0)
         let later = t0.addingTimeInterval(minutes(40))
         state.selectDuration(.thirtyMinutes, now: later)
         #expect(state.expirationDate == later.addingTimeInterval(minutes(30)))
@@ -71,7 +72,7 @@ struct DurationTests {
 
     @Test func reselectingTheCurrentDurationAlsoRestartsTheCountdown() {
         var state = VesilaState()
-        state.setPresence(true, now: t0)
+        state.setActiveFeatures(.both, now: t0)
         let later = t0.addingTimeInterval(minutes(20))
         state.selectDuration(.oneHour, now: later)
         #expect(state.expirationDate == later.addingTimeInterval(minutes(60)))
@@ -98,13 +99,13 @@ struct DurationTests {
         #expect(!state.isSessionActive)
         #expect(state.expirationDate == nil)
 
-        state.setPresence(true, now: t0.addingTimeInterval(minutes(1)))
+        state.setActiveFeatures(.both, now: t0.addingTimeInterval(minutes(1)))
         #expect(state.expirationDate == t0.addingTimeInterval(minutes(1) + minutes(300)))
     }
 
     @Test func remainingTimeCountsDownAndClampsAtZero() {
         var state = VesilaState(preferences: VesilaPreferences(duration: .thirtyMinutes))
-        state.setPresence(true, now: t0)
+        state.setActiveFeatures(.both, now: t0)
         #expect(state.remainingTime(at: t0.addingTimeInterval(minutes(10))) == minutes(20))
         #expect(state.remainingTime(at: t0.addingTimeInterval(minutes(45))) == 0)
     }
@@ -118,8 +119,8 @@ struct QuickToggleMemoryTests {
 
     @Test func remembersTheLatestNonEmptyCombination() {
         var state = VesilaState()
-        state.setPresence(true, now: t0)
-        #expect(state.preferences.lastActiveFeatures == MainFeatures(presence: true, systemAwake: false))
+        state.setActiveFeatures(.both, now: t0)
+        #expect(state.preferences.lastActiveFeatures == MainFeatures.both)
 
         state.setSystemAwake(true, now: t0)
         state.setPresence(false, now: t0)
@@ -156,7 +157,6 @@ struct StayActiveWhenLockedTests {
     }
 
     @Test(arguments: [MainFeatures.none, .both,
-                      MainFeatures(presence: true, systemAwake: false),
                       MainFeatures(presence: false, systemAwake: true)], [true, false])
     func availabilityDependsOnlyOnSystemAwake(features: MainFeatures, storedChoice: Bool) {
         var state = VesilaState(preferences: VesilaPreferences(stayActiveWhenLocked: storedChoice))
@@ -165,21 +165,9 @@ struct StayActiveWhenLockedTests {
     }
 
     @Test(arguments: [true, false])
-    func presenceOnlySessionsEndOnLock(storedChoice: Bool) {
-        var state = VesilaState(preferences: VesilaPreferences(stayActiveWhenLocked: storedChoice))
-        state.setPresence(true, now: t0)
-        #expect(state.shouldEndSession(for: .screenLocked))
-        interrupt(&state, with: .screenLocked)
-        #expect(state.activeFeatures == .none)
-        #expect(state.expirationDate == nil)
-        #expect(state.preferences.stayActiveWhenLocked == storedChoice)
-    }
-
-    @Test(arguments: [true, false])
     func systemAwakeChangesKeepTheStoredChoice(storedChoice: Bool) {
         var state = VesilaState(preferences: VesilaPreferences(stayActiveWhenLocked: storedChoice))
         state.setActiveFeatures(.both, now: t0)
-        let expiration = state.expirationDate
         state.setSystemAwake(false, now: t0.addingTimeInterval(60))
         #expect(!state.isStayActiveWhenLockedAvailable)
         #expect(state.preferences.stayActiveWhenLocked == storedChoice)
@@ -188,7 +176,7 @@ struct StayActiveWhenLockedTests {
         #expect(state.isStayActiveWhenLockedAvailable)
         #expect(state.preferences.stayActiveWhenLocked == storedChoice)
         #expect(state.shouldEndSession(for: .screenLocked) == !storedChoice)
-        #expect(state.expirationDate == expiration)
+        #expect(state.expirationDate == t0.addingTimeInterval(120 + minutes(60)))
     }
 
     @Test func changingItNeverTouchesTheSession() {
@@ -197,12 +185,12 @@ struct StayActiveWhenLockedTests {
         #expect(!state.isSessionActive)
         #expect(state.expirationDate == nil)
 
-        state.setPresence(true, now: t0)
+        state.setActiveFeatures(.both, now: t0)
         state.setStayActiveWhenLocked(false)
         state.setStayActiveWhenLocked(true)
-        #expect(state.activeFeatures == MainFeatures(presence: true, systemAwake: false))
+        #expect(state.activeFeatures == MainFeatures.both)
         #expect(state.expirationDate == t0.addingTimeInterval(minutes(60)))
-        #expect(state.preferences.lastActiveFeatures == MainFeatures(presence: true, systemAwake: false),
+        #expect(state.preferences.lastActiveFeatures == MainFeatures.both,
                 "it is not part of what right-click restores")
     }
 
@@ -231,7 +219,6 @@ struct StayActiveWhenLockedTests {
     @Test(arguments: [VesilaInterruption.systemSleep, .screenLocked, .sessionResigned, .lidClosed], [true, false])
     func onlyALockWithTheSettingOnAndSystemAwakeKeepsTheSession(interruption: VesilaInterruption, stayActiveWhenLocked: Bool) {
         for features in [MainFeatures.none, .both,
-                         MainFeatures(presence: true, systemAwake: false),
                          MainFeatures(presence: false, systemAwake: true)] {
             var state = VesilaState(preferences: VesilaPreferences(stayActiveWhenLocked: stayActiveWhenLocked))
             state.setActiveFeatures(features, now: t0)
@@ -279,7 +266,7 @@ struct StatusLineTests {
         var state = VesilaState()
         #expect(VesilaFormatter.statusLine(for: state, at: t0) == "Inactive")
 
-        state.setPresence(true, now: t0)
+        state.setActiveFeatures(.both, now: t0)
         #expect(VesilaFormatter.statusLine(for: state, at: t0) == "1h 0m remaining")
         #expect(VesilaFormatter.statusLine(for: state, at: t0.addingTimeInterval(minutes(59))) == "1m remaining")
         #expect(VesilaFormatter.statusLine(for: state, at: t0.addingTimeInterval(minutes(60) - 5)) == "5s remaining")
@@ -298,5 +285,35 @@ struct StatusLineTests {
     ])
     func formatsRemainingTime(seconds: TimeInterval, expected: String) {
         #expect(VesilaFormatter.remainingDescription(seconds) == expected)
+    }
+}
+
+@Suite("Master activity invariant")
+struct MasterActivityTests {
+    @Test func presenceWhileOffIsAnExactNoOpIncludingPause() {
+        var state = VesilaState(preferences: VesilaPreferences(activationMode: .scheduled))
+        state.setActiveFeatures(.both, now: scheduleDate(hour: 10), calendar: scheduleCalendar)
+        state.setSystemAwake(false, now: scheduleDate(hour: 11), calendar: scheduleCalendar)
+        let before = state
+        state.setPresence(true, now: scheduleDate(hour: 12), calendar: scheduleCalendar)
+        #expect(state == before)
+    }
+
+    @Test func masterOffClearsPresenceAndCountdown() {
+        var state = VesilaState()
+        state.setActiveFeatures(.both, now: t0)
+        state.setSystemAwake(false, now: t0.addingTimeInterval(60))
+        #expect(state.activeFeatures == .none)
+        #expect(state.expirationDate == nil)
+        #expect(state.preferences.lastActiveFeatures == .both)
+    }
+
+    @Test(arguments: [MainFeatures.none, .both, MainFeatures(systemAwake: true), MainFeatures(presence: true)])
+    func bulkInputIsNormalized(features: MainFeatures) {
+        var state = VesilaState()
+        state.setActiveFeatures(features, now: t0)
+        #expect(!state.activeFeatures.presence || state.activeFeatures.systemAwake)
+        #expect(state.isSessionActive == features.systemAwake)
+        if !features.systemAwake { #expect(state.activeFeatures == .none) }
     }
 }

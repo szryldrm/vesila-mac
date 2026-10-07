@@ -3,7 +3,8 @@ import Foundation
 /// Persists `VesilaPreferences` and the onboarding flag in UserDefaults.
 /// The key names predate this type and must stay stable so existing installs keep their settings.
 /// The key of a removed display setting is deliberately never read, so Stay Active When Locked
-/// always starts off rather than inheriting an unrelated setting. There is no migration.
+/// always starts off rather than inheriting an unrelated setting. Legacy Presence-only activity
+/// is restored as both features.
 struct PreferencesStore {
     private enum Key {
         static let activationMode = "activationMode"
@@ -41,7 +42,7 @@ struct PreferencesStore {
                 systemAwake: defaults.bool(forKey: Key.lastActiveSystemAwake)
             )
             if !features.isEmpty {
-                preferences.lastActiveFeatures = features
+                preferences.lastActiveFeatures = features.presence && !features.systemAwake ? .both : features
             }
         }
         if let rawMode = defaults.string(forKey: Key.activationMode), let mode = VesilaActivationMode(rawValue: rawMode) {
@@ -71,7 +72,7 @@ struct PreferencesStore {
         defaults.set(preferences.stayActiveWhenLocked, forKey: Key.stayActiveWhenLocked)
         defaults.set(true, forKey: Key.hasLastActiveFeatures)
         defaults.set(preferences.lastActiveFeatures.presence, forKey: Key.lastActivePresence)
-        defaults.set(preferences.lastActiveFeatures.systemAwake, forKey: Key.lastActiveSystemAwake)
+        defaults.set(preferences.lastActiveFeatures.systemAwake || preferences.lastActiveFeatures.presence, forKey: Key.lastActiveSystemAwake)
     }
 
     var lastLaunchedVersion: String? {

@@ -5,7 +5,6 @@ import AppKit
 /// as `Action`s and never changes state itself.
 final class VesilaMenuView: NSView {
     enum Action {
-        case setVesilaActive(Bool)
         case setPresence(Bool)
         case setSystemAwake(Bool)
         case setStayActiveWhenLocked(Bool)
@@ -18,27 +17,31 @@ final class VesilaMenuView: NSView {
     }
 
     private let statusCard: GlobalStatusCardView
-    private let presenceCard: FeatureCardView
-    private let systemAwakeCard: FeatureCardView
-    private let stayActiveRow: StayActiveWhenLockedRowView
+    private let presenceCard: StateCardView
+    private let systemAwakeCard: StateCardView
+    private let stayActiveRow: StateCardView
     private let activationPicker: ActivationView
     private let startOnLaunchRow: StartOnLaunchRowView
     private let content = NSStackView()
 
     init(state: VesilaState, now: Date, loginItemStatus: LoginItemStatus, onAction: @escaping (Action) -> Void) {
-        statusCard = GlobalStatusCardView { onAction(.setVesilaActive($0)) }
-        presenceCard = FeatureCardView(title: "Presence") { onAction(.setPresence($0)) }
-        systemAwakeCard = FeatureCardView(title: "System Awake") { onAction(.setSystemAwake($0)) }
-        stayActiveRow = StayActiveWhenLockedRowView { onAction(.setStayActiveWhenLocked($0)) }
+        statusCard = GlobalStatusCardView()
+        presenceCard = StateCardView(title: "Presence", symbol: "person", layout: .compact, requirement: "Requires System Awake") { onAction(.setPresence($0)) }
+        systemAwakeCard = StateCardView(title: "System Awake", symbol: "sun.max") { onAction(.setSystemAwake($0)) }
+        stayActiveRow = StateCardView(title: "Stay Active When Locked", symbol: "lock", layout: .compact, requirement: "Requires System Awake") { onAction(.setStayActiveWhenLocked($0)) }
         activationPicker = ActivationView(onMode: { onAction(.selectActivationMode($0)) },
                                           onDuration: { onAction(.selectDuration($0)) },
                                           onSchedule: { onAction(.setSchedule($0)) })
         startOnLaunchRow = StartOnLaunchRowView { onAction(.setStartOnLaunch($0)) }
         super.init(frame: NSRect(x: 0, y: 0, width: MenuStyle.width, height: 1))
 
-        let features = NSStackView(views: [presenceCard, systemAwakeCard])
+        let features = NSStackView(views: [presenceCard, stayActiveRow])
         features.orientation = .horizontal
-        features.distribution = .fillEqually
+        features.distribution = .fill
+        features.alignment = .centerY
+        // Keep Presence at its natural width and give the longer label the remaining space.
+        presenceCard.setContentHuggingPriority(.required, for: .horizontal)
+        presenceCard.setContentCompressionResistancePriority(.required, for: .horizontal)
         features.spacing = MenuStyle.childGap
         let separator = NSBox()
         separator.boxType = .separator
@@ -47,12 +50,11 @@ final class VesilaMenuView: NSView {
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = MenuStyle.gap
-        for view in [statusCard, features, stayActiveRow, activationPicker, startOnLaunchRow, separator, footer] {
+        for view in [statusCard, systemAwakeCard, features, activationPicker, startOnLaunchRow, separator, footer] {
             content.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         }
-        content.setCustomSpacing(MenuStyle.childGap, after: features)
-        content.setCustomSpacing(MenuStyle.sectionGap, after: stayActiveRow)
+        content.setCustomSpacing(MenuStyle.sectionGap, after: features)
         content.setCustomSpacing(MenuStyle.sectionGap, after: startOnLaunchRow)
         content.setCustomSpacing(MenuStyle.smallGap, after: separator)
         content.translatesAutoresizingMaskIntoConstraints = false
@@ -73,12 +75,12 @@ final class VesilaMenuView: NSView {
     }
 
     func render(_ state: VesilaState, now: Date) {
-        statusCard.update(features: state.activeFeatures, statusLine: VesilaFormatter.statusLine(for: state, at: now), isOn: state.isSessionActive)
-        presenceCard.update(isOn: state.activeFeatures.presence)
+        statusCard.update(features: state.activeFeatures, statusLine: VesilaFormatter.statusLine(for: state, at: now))
+        presenceCard.update(isOn: state.activeFeatures.presence, isEnabled: state.activeFeatures.systemAwake)
         systemAwakeCard.update(isOn: state.activeFeatures.systemAwake)
         stayActiveRow.update(
-            isOn: state.preferences.stayActiveWhenLocked,
-            isAvailable: state.isStayActiveWhenLockedAvailable
+            isOn: state.preferences.stayActiveWhenLocked && state.isStayActiveWhenLockedAvailable,
+            isEnabled: state.isStayActiveWhenLockedAvailable
         )
         activationPicker.update(preferences: state.preferences)
         resizeToFitContent()
