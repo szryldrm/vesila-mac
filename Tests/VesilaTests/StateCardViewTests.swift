@@ -2,11 +2,38 @@ import AppKit
 import Testing
 @testable import Vesila
 
-// Serialized: these tests post to and drain the shared application event queue, and the card's
-// mouse tracking loop spins the main run loop, where another test's events could interleave.
+// Serialized: these cases post to and drain the shared application event queue in turn.
 @Suite("Clickable state cards", .serialized)
 @MainActor
 struct StateCardViewTests {
+    /// Hosts the card in a window. NSWindow's postEvent and nextEvent only forward to NSApp, so the
+    /// shared application must exist, as in the other window tests, or synthetic releases are dropped
+    /// and whether they reach a queue would depend on which suite happened to create NSApp first.
+    private func hostWindow(_ card: StateCardView) -> NSWindow {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 160, height: 100),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = card
+        card.frame = NSRect(x: 0, y: 0, width: 160, height: 100)
+        return window
+    }
+
+    /// Queues a release ahead of everything else, and fails here, rather than inside the card's
+    /// tracking loop (which waits for a release without a deadline, like real input), unless that
+    /// release is the next event the loop will see.
+    private func queueRelease(_ up: NSEvent, in window: NSWindow) throws {
+        window.postEvent(up, atStart: true)
+        let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged], until: .distantPast,
+                                    inMode: .default, dequeue: false)
+        try #require(next?.type == .leftMouseUp && next?.locationInWindow == up.locationInWindow,
+                     "synthetic release at \(up.locationInWindow) not queued; next event \(String(describing: next))")
+    }
+
+    /// The release the tracking loop has not consumed, removed so it cannot leak into the next case.
+    private func takeQueuedRelease(in window: NSWindow) -> NSEvent? {
+        window.nextEvent(matching: [.leftMouseUp], until: .distantPast, inMode: .default, dequeue: true)
+    }
+
     /// Lays the fixture window out, then returns the window locations of the card's center and of a
     /// point outside it, so synthetic events follow the card's constrained geometry, not its preset frame.
     private func clickPoints(_ card: StateCardView, in window: NSWindow) throws -> (inside: NSPoint, outside: NSPoint) {
@@ -32,10 +59,7 @@ struct StateCardViewTests {
         let card = StateCardView(title: "Presence", symbol: "person", layout: layout, requirement: "Requires System Awake") {
             changes.append($0)
         }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 160, height: 100),
-                              styleMask: .borderless, backing: .buffered, defer: false)
-        window.contentView = card
-        card.frame = NSRect(x: 0, y: 0, width: 160, height: 100)
+        let window = hostWindow(card)
         card.update(isOn: storedChoice, isEnabled: false)
         #expect(!card.isOn)
         #expect(!card.acceptsFirstResponder)
@@ -53,11 +77,11 @@ struct StateCardViewTests {
         let up = try #require(NSEvent.mouseEvent(
             with: .leftMouseUp, location: center, modifierFlags: [], timestamp: 0,
             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
-        window.postEvent(up, atStart: true)
+        try queueRelease(up, in: window)
         card.mouseEntered(with: click)
         card.mouseDown(with: click)
-        // Disabled input leaves the queued mouse-up untouched; drain it before the next test.
-        _ = window.nextEvent(matching: [.leftMouseUp], until: .now, inMode: .default, dequeue: true)
+        // Disabled input never starts tracking, so the queued release is still there, untouched.
+        #expect(takeQueuedRelease(in: window)?.locationInWindow == center)
         #expect(changes.isEmpty)
         #expect(!card.isOn)
         // AppKit decides where subview layers sit among the card's sublayers, so find the card's
@@ -100,10 +124,7 @@ struct StateCardViewTests {
     func mouseUpInsideCommitsAndOutsideCancels(layout: StateCardView.Layout) throws {
         var changes: [Bool] = []
         let card = StateCardView(title: "Presence", symbol: "person", layout: layout) { changes.append($0) }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 160, height: 100),
-                              styleMask: .borderless, backing: .buffered, defer: false)
-        window.contentView = card
-        card.frame = NSRect(x: 0, y: 0, width: 160, height: 100)
+        let window = hostWindow(card)
         func click(_ type: NSEvent.EventType, _ location: NSPoint) throws -> NSEvent {
             try #require(NSEvent.mouseEvent(with: type, location: location, modifierFlags: [],
                                             timestamp: 0, windowNumber: window.windowNumber,
@@ -111,12 +132,14 @@ struct StateCardViewTests {
         }
         let points = try clickPoints(card, in: window)
         let down = try click(.leftMouseDown, points.inside)
-        window.postEvent(try click(.leftMouseUp, points.inside), atStart: true)
+        try queueRelease(try click(.leftMouseUp, points.inside), in: window)
         card.mouseDown(with: down)
+        #expect(takeQueuedRelease(in: window) == nil)
         #expect(changes == [true])
         #expect(card.isOn)
-        window.postEvent(try click(.leftMouseUp, points.outside), atStart: true)
+        try queueRelease(try click(.leftMouseUp, points.outside), in: window)
         card.mouseDown(with: down)
+        #expect(takeQueuedRelease(in: window) == nil)
         #expect(changes == [true])
         #expect(card.isOn)
     }
