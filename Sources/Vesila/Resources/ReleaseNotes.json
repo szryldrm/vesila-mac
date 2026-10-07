@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.0.7",
+    "notes": [
+      "System Awake is now the main on/off control, replacing the separate Vesila switch; Presence requires System Awake to be on.",
+      "While System Awake is on, your display now stays awake as well as your Mac.",
+      "Redesigned the menu with clearer, clickable feature cards; options that need System Awake are dimmed until you turn it on.",
+      "Improved reliability with more robust automated testing and release checks."
+    ]
+  },
+  {
     "version": "1.0.6",
     "notes": [
       "Added Scheduled activation mode with configurable weekdays and start/end times directly in the menu bar.",
