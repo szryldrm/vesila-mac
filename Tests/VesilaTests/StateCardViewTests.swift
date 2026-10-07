@@ -2,9 +2,23 @@ import AppKit
 import Testing
 @testable import Vesila
 
-@Suite("Clickable state cards")
+// Serialized: these tests post to and drain the shared application event queue, and the card's
+// mouse tracking loop spins the main run loop, where another test's events could interleave.
+@Suite("Clickable state cards", .serialized)
 @MainActor
 struct StateCardViewTests {
+    /// Lays the fixture window out, then returns the window locations of the card's center and of a
+    /// point outside it, so synthetic events follow the card's constrained geometry, not its preset frame.
+    private func clickPoints(_ card: StateCardView, in window: NSWindow) throws -> (inside: NSPoint, outside: NSPoint) {
+        window.layoutIfNeeded()
+        try #require(!card.bounds.isEmpty, "card bounds \(card.bounds) after layout")
+        let inside = card.convert(NSPoint(x: card.bounds.midX, y: card.bounds.midY), to: nil)
+        let outside = card.convert(NSPoint(x: card.bounds.minX - 20, y: card.bounds.minY - 20), to: nil)
+        #expect(card.bounds.contains(card.convert(inside, from: nil)))
+        #expect(!card.bounds.contains(card.convert(outside, from: nil)))
+        return (inside, outside)
+    }
+
     private func key(_ characters: String) throws -> NSEvent {
         try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
                                      timestamp: 0, windowNumber: 0, context: nil,
@@ -31,11 +45,13 @@ struct StateCardViewTests {
         #expect(!card.accessibilityPerformPress())
         card.keyDown(with: try key(" "))
         card.keyDown(with: try key("\r"))
+        // Click the card's center, so the rejection cannot come from the press landing outside it.
+        let center = try clickPoints(card, in: window).inside
         let click = try #require(NSEvent.mouseEvent(
-            with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+            with: .leftMouseDown, location: center, modifierFlags: [], timestamp: 0,
             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
         let up = try #require(NSEvent.mouseEvent(
-            with: .leftMouseUp, location: .zero, modifierFlags: [], timestamp: 0,
+            with: .leftMouseUp, location: center, modifierFlags: [], timestamp: 0,
             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
         window.postEvent(up, atStart: true)
         card.mouseEntered(with: click)
@@ -93,21 +109,27 @@ struct StateCardViewTests {
                                             timestamp: 0, windowNumber: window.windowNumber,
                                             context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
         }
-        let down = try click(.leftMouseDown, NSPoint(x: 20, y: 20))
-        window.postEvent(try click(.leftMouseUp, NSPoint(x: 20, y: 20)), atStart: true)
+        let points = try clickPoints(card, in: window)
+        let down = try click(.leftMouseDown, points.inside)
+        window.postEvent(try click(.leftMouseUp, points.inside), atStart: true)
         card.mouseDown(with: down)
         #expect(changes == [true])
-        window.postEvent(try click(.leftMouseUp, NSPoint(x: -20, y: -20)), atStart: true)
+        #expect(card.isOn)
+        window.postEvent(try click(.leftMouseUp, points.outside), atStart: true)
         card.mouseDown(with: down)
         #expect(changes == [true])
+        #expect(card.isOn)
     }
 
     private func expectHorizontalContent(_ card: StateCardView) throws {
         let content = try #require(card.subviews.compactMap { $0 as? NSStackView }.first)
         let icon = try #require(content.arrangedSubviews.first as? NSImageView)
         let title = try #require(content.arrangedSubviews.last as? NSTextField)
-        let iconFrame = card.convert(icon.bounds, from: icon)
-        let titleFrame = card.convert(title.bounds, from: title)
+        // Auto Layout positions alignment rects. A label's frame extends past its alignment rect by its
+        // text cell padding (alignmentRectInsets), so the visible text spans the alignment rect.
+        let iconFrame = card.convert(icon.alignmentRect(forFrame: icon.frame), from: icon.superview)
+        let titleFrame = card.convert(title.alignmentRect(forFrame: title.frame), from: title.superview)
+        let titleViewFrame = card.convert(title.bounds, from: title)
         #expect(content.orientation == .horizontal)
         #expect(content.alignment == .centerY)
         #expect(title.maximumNumberOfLines == 1)
@@ -117,7 +139,10 @@ struct StateCardViewTests {
         #expect(abs(iconFrame.midY - titleFrame.midY) <= 0.5)
         #expect(abs(iconFrame.midY - card.bounds.midY) <= 0.5)
         #expect(title.fittingSize.width <= title.frame.width + 0.5)
-        #expect(titleFrame.maxX <= card.bounds.maxX - MenuStyle.gap + 0.5)
+        let geometry = "title alignment \(titleFrame), frame \(titleViewFrame), "
+            + "insets \(title.alignmentRectInsets), card \(card.bounds)"
+        #expect(titleFrame.maxX <= card.bounds.maxX - MenuStyle.gap + 0.5, "\(geometry)")
+        #expect(titleViewFrame.maxX <= card.bounds.maxX)
         #expect(card.frame.height == 38)
         #expect(card.fittingSize.height == 38)
     }
