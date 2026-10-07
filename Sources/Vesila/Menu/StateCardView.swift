@@ -13,6 +13,7 @@ class StateCardView: MenuSurfaceView {
     private let titleLabel: NSTextField
     private let icon = NSImageView()
     private let hoverLayer = CALayer()
+    private weak var compactContent: NSStackView?
     private let onToggle: (Bool) -> Void
     private let requirement: String?
     private var isHovered = false
@@ -48,6 +49,7 @@ class StateCardView: MenuSurfaceView {
             icon.heightAnchor.constraint(equalToConstant: iconSize)
         ])
         if isCompact {
+            compactContent = content
             content.translatesAutoresizingMaskIntoConstraints = false
             addSubview(content)
             NSLayoutConstraint.activate([
@@ -68,10 +70,23 @@ class StateCardView: MenuSurfaceView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override var intrinsicContentSize: NSSize {
-        guard cardLayout == .compact else { return super.intrinsicContentSize }
-        // Reserve the complete label, icon, gap, and both horizontal insets.
-        return NSSize(width: titleLabel.intrinsicContentSize.width + 14 + MenuStyle.smallGap + 2 * MenuStyle.gap,
-                      height: 38)
+        guard cardLayout == .compact, let content = compactContent else { return super.intrinsicContentSize }
+        // Reserve everything the stack lays out (its own insets, icon, gap, and the complete label)
+        // plus both horizontal card insets, so the required-width label never crosses the trailing inset.
+        let insets = content.edgeInsets
+        let contentWidth = insets.left + 14 + content.spacing + titleLabel.intrinsicContentSize.width + insets.right
+        return NSSize(width: ceil(contentWidth) + 2 * MenuStyle.gap, height: 38)
+    }
+
+    // The label re-measures its text for the window it draws in; the card's width derives from it.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        invalidateIntrinsicContentSize()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        invalidateIntrinsicContentSize()
     }
 
     func update(isOn: Bool, isEnabled: Bool = true) {

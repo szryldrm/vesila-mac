@@ -44,7 +44,15 @@ struct StateCardViewTests {
         _ = window.nextEvent(matching: [.leftMouseUp], until: .now, inMode: .default, dequeue: true)
         #expect(changes.isEmpty)
         #expect(!card.isOn)
-        #expect(card.layer?.sublayers?.last?.opacity == 0)
+        // AppKit decides where subview layers sit among the card's sublayers, so find the card's
+        // own hover/press feedback layer by identity rather than by position.
+        let subviewLayers = card.subviews.compactMap(\.layer)
+        let feedback = try #require(card.layer?.sublayers?.first { layer in !subviewLayers.contains { $0 === layer } })
+        #expect(feedback.opacity == 0)
+        // Only the disabled state suppresses it: the same pointer entry shows feedback once enabled.
+        card.update(isOn: storedChoice)
+        card.mouseEntered(with: click)
+        #expect(feedback.opacity == 1)
     }
 
     @Test(arguments: [StateCardView.Layout.prominent, .compact])
@@ -101,10 +109,13 @@ struct StateCardViewTests {
         let iconFrame = card.convert(icon.bounds, from: icon)
         let titleFrame = card.convert(title.bounds, from: title)
         #expect(content.orientation == .horizontal)
+        #expect(content.alignment == .centerY)
         #expect(title.maximumNumberOfLines == 1)
         #expect(iconFrame.maxX < titleFrame.minX)
-        #expect(abs(iconFrame.midY - titleFrame.midY) < 0.5)
-        #expect(abs(iconFrame.midY - card.bounds.midY) < 0.5)
+        // Centering the 14 pt icon and a label of different height parity in the 38 pt card yields
+        // half-point origins that AppKit rounds onto its layout grid; half a point is that rounding.
+        #expect(abs(iconFrame.midY - titleFrame.midY) <= 0.5)
+        #expect(abs(iconFrame.midY - card.bounds.midY) <= 0.5)
         #expect(title.fittingSize.width <= title.frame.width + 0.5)
         #expect(titleFrame.maxX <= card.bounds.maxX - MenuStyle.gap + 0.5)
         #expect(card.frame.height == 38)
